@@ -236,12 +236,6 @@ def create_training_dataset(
         overlap=overlap
     )
 
-def env_check():
-    # Include any code here that might need to check for the correct env setup.
-    print(f'Installed GDAL Version: {gdal.__version__}')
-    print(f'Installed Tensorflow Version: {tf.__version__}')
-
-
 if __name__ == "__main__":
     parse = argparse.ArgumentParser(
         description="Creates a tfrecord.gz from patches of HLS, TOPO, and ATL08 for a given tile-year"
@@ -256,5 +250,5 @@ if __name__ == "__main__":
     parse.add_argument("--patch_size", help="training image patch size", default=128)
     parse.add_argument("--overlap", help="overlap between training patches", default=32)
     args = parse.parse_args()
-    env_check()
+
     create_training_dataset(**vars(args))
