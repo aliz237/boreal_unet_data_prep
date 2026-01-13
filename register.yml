@@ -1,0 +1,53 @@
+algorithm_description: Create tfrecords from HLS, TOPO, ATL08 in boreal forests
+algorithm_name: boreal_unet_data_prep
+algorithm_version: main
+build_command: boreal_unet_data_prep/build-env.sh
+disk_space: 80GB
+docker_container_url: mas.maap-project.org/root/maap-workspaces/custom_images/maap_base:v4.3.0
+inputs:
+  config: []
+  file:
+  - default: ''
+    description: topo file url
+    name: topo_fn_url
+    required: true
+  - default: ''
+    description: HLS file url
+    name: hls_fn_url
+    required: true
+  - default: ''
+    description: atl08 file url
+    name: atl08_fn_url
+    required: true
+  positional:
+  - default: ''
+    description: topo file
+    name: topo_fn
+    required: true
+  - default: ''
+    description: hls file
+    name: hls_fn
+    required: true
+    description: atl08 file
+    name: atl08_fn
+    required: true
+  - default: ''
+    description: boreal tile number to run
+    name: tile_num
+    required: true
+  - default: ''
+    description: training image patch size (e.g 128)
+    name: patch_size
+    required: true
+  - default: ''
+    description: overlap between adjacent training image patches
+    name: overlap
+    required: true
+  - default: ''
+    description: year of training image data
+    name: year
+    required: true
+
+queue: maap-dps-worker-32gb
+repository_url: https://github.com/aliz237/boreal_unet_data_prep
+run_command: boreal_unet_data_prep/run-data-prep.sh

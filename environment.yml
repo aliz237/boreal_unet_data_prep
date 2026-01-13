@@ -1,0 +1,13 @@
+name: data_prep
+channels:
+    - conda-forge
+dependencies:
+    - python=3.12.7
+    - pip=24.3.1
+    - gdal=3.9.3
+    - numpy=1.26.4
+    - pandas=2.3.2
+    - geopandas=1.0.1
+    - rasterio=1.4.2
+    - pip:
+        - tensorflow==2.17.0
