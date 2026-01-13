@@ -78,9 +78,9 @@ def extract_patches_tfrec(
     atl08_path,
     topo_path,
     tfrecord_path,
-    patch_size=patch_size,
+    patch_size=128,
     ndval=-9999,
-    overlap=overlap,
+    overlap=32
 ):
     hls = rasterio.open(hls_path)
     h = hls.height
