@@ -21,19 +21,29 @@ inputs:
     required: true
   positional:
   - default: ''
-    description: topo file
-    name: topo_fn
+    description: boreal tile number to run
+    name: tile_num
+    required: true
+  - default: ''
+    description: year of training image data
+    name: year
     required: true
   - default: ''
     description: hls file
     name: hls_fn
     required: true
     description: atl08 file
+  - default: ''
+    description: topo file
+    name: topo_fn
+    required: true
+  - default: ''
+    description: atl08 parquet file
     name: atl08_fn
     required: true
   - default: ''
-    description: boreal tile number to run
-    name: tile_num
+    description: output path
+    name: out_path
     required: true
   - default: ''
     description: training image patch size (e.g 128)
@@ -42,10 +52,6 @@ inputs:
   - default: ''
     description: overlap between adjacent training image patches
     name: overlap
-    required: true
-  - default: ''
-    description: year of training image data
-    name: year
     required: true
 
 queue: maap-dps-worker-32gb
