@@ -256,4 +256,4 @@ if __name__ == "__main__":
     parse.add_argument("--overlap", help="overlap between training patches", default=32)
     args = parse.parse_args()
     env_check()
-    create_training_dataset(**args)
+    create_training_dataset(**vars(args))
