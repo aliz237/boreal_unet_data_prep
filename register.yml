@@ -42,10 +42,6 @@ inputs:
     name: atl08_fn
     required: true
   - default: ''
-    description: output path
-    name: out_path
-    required: true
-  - default: ''
     description: training image patch size (e.g 128)
     name: patch_size
     required: true
