@@ -38,7 +38,7 @@ def serialize_image_patch(hls_atl08_arr, patch_size, num_bands):
     ex = tf.train.Example(features=tf.train.Features(feature=feature))
     return ex.SerializeToString()
 
-def is_lidar_heavy(atl08_arr, patch_size=patch_size, nodata=-9999, min_valid_lidar_per_batch=MIN_VALID_LIDAR_PER_PATCH):
+def is_lidar_heavy(atl08_arr, patch_size, min_valid_lidar_per_batch, nodata=-9999):
     # filtering out the low quality atl08 patches
     return np.sum(atl08_arr != nodata) > min_valid_lidar_per_batch
 
@@ -99,7 +99,10 @@ def extract_patches_tfrec(
     hls_patches_dropped = 0
     topo_patches_dropped = 0
     ndval_thresh = 0.30
-
+    patch_depth = 8 # 6 HLS channels, 1 slope channel, and atl08 label.
+    # 120 is median valid pixel count of lidar track in ATL08 128x128 patches
+    # the other one is 70% of diagonal of a patch (so close to complete and decent lidar track)
+    min_valid_lidar_per_batch = int(min(patch_size * np.sqrt(2) * 0.7, 120))
     tfw = tf.io.TFRecordWriter(
         str(tfrecord_path), options=tf.io.TFRecordOptions(compression_type="GZIP")
     )
@@ -111,7 +114,7 @@ def extract_patches_tfrec(
             win = Window(j, i, patch_size, patch_size)
             lab_arr = atl08.read(window=win).astype(np.float32)
             # look for a close to diagonal lidar track across the patch
-            if not is_lidar_heavy(lab_arr):
+            if not is_lidar_heavy(lab_arr, patch_size, min_valid_lidar_per_batch):
                 continue
             # read corresponding HLS patch
             hls_arr = hls.read(window=win).astype(np.float32)
@@ -143,7 +146,7 @@ def extract_patches_tfrec(
             # reorder as needed by model.fit, channels last
             arr = np.moveaxis(arr, 0, -1)
             # serialize the arr to write as a tfrecord
-            ser = serialize_image_patch(arr, patch_size, PATCH_DEPTH)
+            ser = serialize_image_patch(arr, patch_size, patch_depth)
             tfw.write(ser.numpy())
             if n % 100 == 0:
                 print(f"wrote {n} records, of total {int(h*w/patch_size**2)}")
@@ -223,13 +226,13 @@ def create_training_dataset(
     hls_path_b1_b6 = subset_HLS_bands(hls_path, clean=False)
 
     print(f"Extracting patches for tile-year: {tile_num}-{year}")
-    extract_patches_tfrec_clean(
+    extract_patches_tfrec(
         hls_path_b1_b6,
         atl08_raster_path,
         slope_path,
         tfrecord_path=f"output/{tile_num}_{year}_{patch_size}_{overlap}.tfrecord.gz",
         patch_size=patch_size,
-        overlap=overlap,
+        overlap=overlap
     )
 
 def env_check():
