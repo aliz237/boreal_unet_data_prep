@@ -247,8 +247,8 @@ if __name__ == "__main__":
         "--slope_path", help="topo image path with slope as second band", required=True
     )
     parse.add_argument("--atl08_path", help="atl08 parquet file", required=True)
-    parse.add_argument("--patch_size", help="training image patch size", default=128)
-    parse.add_argument("--overlap", help="overlap between training patches", default=32)
+    parse.add_argument("--patch_size", help="training image patch size", type=int, default=128)
+    parse.add_argument("--overlap", help="overlap between training patches", type=int, default=32)
     args = parse.parse_args()
 
     create_training_dataset(**vars(args))
