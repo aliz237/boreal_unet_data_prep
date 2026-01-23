@@ -43,14 +43,14 @@ def is_lidar_heavy(atl08_arr, patch_size, min_valid_lidar_per_batch, nodata=-999
     # filtering out the low quality atl08 patches
     return np.sum(atl08_arr != nodata) > min_valid_lidar_per_batch
 
-def gapfill(arr):
+def gapfill(arr, nodata_thresh=0.6):
     patch_size = arr.shape[1]
     # divides patch sizes 128, 64, 32 and is large enough 
     # 2 or 4 are too small
     filter_size = 8
     bands = list(range(arr.shape[0])) # fill all bands
     na_blocks = 0
-    na_blocks_thresh = 25 # 0.10 * 128**2 / 8**2
+    na_blocks_thresh = int(nodata_thresh * patch_size**2 / filter_size**2)
 
     for band in bands:
         patch_median = np.nanmedian(arr[band])
@@ -63,14 +63,13 @@ def gapfill(arr):
                     win[np.isnan(win)] = fill_val
                 else:
                     na_blocks += 1
-                    print(f'full nan block, na_blocks: {na_blocks}')
+
         # fill the rest with patch-wide median
         na_mask = np.isnan(arr[band])
         if np.any(na_mask):
             arr[band][na_mask] = patch_median
         # threshold too many NA blocks
         if na_blocks > na_blocks_thresh:
-            print(f'too many na_blocks: {na_blocks}, not writing a tfrecord.')
             return False
     return True
 
