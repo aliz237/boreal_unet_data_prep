@@ -6,7 +6,7 @@ import numpy as np
 import rasterio
 from rasterio.windows import Window
 
-import tensorflow as ts
+import tensorflow as tf
 from keras.models import load_model
 
 from data_prep import gapfill, resample_topo_if_needed, subset_HLS_bands
