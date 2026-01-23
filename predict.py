@@ -48,7 +48,7 @@ def predict_raster(hls_path, topo_path, out_raster_path, model_path, patch_size=
                     continue
                 
                 # fill NA
-                if not gapfill(hls_arr, na_thresh=0.60):
+                if not gapfill(hls_arr):
                     hls_patches_dropped += 1
                     continue
                 # same for topo
@@ -58,7 +58,7 @@ def predict_raster(hls_path, topo_path, out_raster_path, model_path, patch_size=
                 slope /= 90.0
                 if np.isnan(slope).all():
                     continue
-                if not gapfill(slope, na_thresh=0.60):
+                if not gapfill(slope):
                     topo_patches_dropped += 1
                     continue
 
