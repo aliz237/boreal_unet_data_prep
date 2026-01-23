@@ -212,6 +212,21 @@ def subset_HLS_bands(hls_path, clean=False):
 
     return hls_path_b1_b6
 
+def resample_topo_if_needed(topo_path):
+    with rasterio.open(topo_path) as t:
+        reproj_needed = t.width != 3000 or t.height != 3000
+
+    if reproj_needed:
+        # we can use rasterio but this is much easier
+        reproj_path = topo_path.with_stem(f'{topo_path.stem}_reproj')
+        cmd = ['gdal_translate', '-tr', '30', '30', '-r', 'bilinear', str(topo_path), str(reproj_path)]
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        topo_path.unlink()
+        return reproj_path
+
+    return topo_path
+
+
 def create_training_dataset(
     tile_num, year, atl08_path, hls_path, slope_path, patch_size=128, overlap=32
 ):
