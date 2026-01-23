@@ -5,9 +5,10 @@ mkdir -p output
 conda run --live-stream --name data_prep python ${basedir}/predict.py \
       --hls_path ${1} \
       --topo_path ${2} \
-      --out_raster_path ${3} \
-      --patch_size ${4} \
-      --step_size ${5} \
-      --ndval ${6} \
-      --batch_size ${7}
+      --model_path ${3} \
+      --out_raster_path ${4} \
+      --patch_size ${5} \
+      --step_size ${6} \
+      --ndval ${7} \
+      --batch_size ${8}
 

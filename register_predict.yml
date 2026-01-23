@@ -1,5 +1,5 @@
 algorithm_description: Predicts a vegetation height raster given a model, HLS and topo
-algorithm_name: boreal_unet_data_prep
+algorithm_name: boreal_unet_predict
 algorithm_version: main
 build_command: boreal_unet_data_prep/build-env.sh
 disk_space: 80GB
@@ -18,7 +18,7 @@ inputs:
   - default: ''
     description: model.keras file url
     name: model_fn_url
-    required: true    
+    required: true
   positional:
   - default: ''
     description: hls file

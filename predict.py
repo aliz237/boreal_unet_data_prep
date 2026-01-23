@@ -1,20 +1,34 @@
 import subprocess
 from pathlib import Path
+
 import numpy as np
+
 import rasterio
 from rasterio.windows import Window
-from data_prep import gapfill, resample_topo_if_needed
 
-def predict_raster(hls_path, topo_path, out_raster_path, model, patch_size=128, step_size=100, ndval=-9999, batch_size=64):
+import tensorflow as ts
+from keras.models import load_model
+
+from data_prep import gapfill, resample_topo_if_needed, subset_HLS_bands
+
+def masked_mse_loss(mask_value=-9999):
+    def loss(y_true, y_pred):
+        mask = tf.cast(tf.not_equal(y_true, mask_value), tf.float32)
+        squared_error = tf.square(y_true - y_pred) * mask
+        return tf.reduce_sum(squared_error) / (tf.reduce_sum(mask) + 1e-6)
+    return loss
+
+def predict_raster(hls_path, topo_path, out_raster_path, model_path, patch_size=128, step_size=100, ndval=-9999, batch_size=64):
     batch = []
     ulxy = []
     topo_path = resample_topo_if_needed(Path(topo_path))
     topo = rasterio.open(topo_path)
-
+    hls_path = subset_HLS_bands(Path(hls_path), clean=True)
     hls_patches_dropped = 0
     topo_patches_dropped = 0    
     ax = np.clip(np.minimum(np.linspace(0, 1, patch_size), np.linspace(1, 0, patch_size)) * 5, 0.01, 1)
     kernel = np.outer(ax, ax)
+    model = load_model(model_path, custom_objects={'loss': masked_mse_loss})
 
     with rasterio.open(hls_path) as hls:
         w, h, c = hls.width, hls.height, hls.count
@@ -91,6 +105,7 @@ if __name__ == "__main__":
         "--topo_path", help="topo image path with slope as second band", required=True
     )
     parse.add_argument("--out_raster_path", help="output predicted raster path", required=True)
+    parse.add_argument("--model_path", help="path to UNet model", required=True)
     parse.add_argument("--patch_size", help="patch size, should be the same as what was used when training the model", type=int, default=128)
     parse.add_argument("--step_size", help="step size for sliding the window of size patch_size over the input rasters", type=int, default=100)
     parse.add_argument("--ndval", help="nodata value", type=int, default=-9999)
