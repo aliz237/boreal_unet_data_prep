@@ -1,16 +1,16 @@
-import numpy sa np
+import subprocess
 from pathlib import Path
+import numpy as np
 import rasterio
 from rasterio.windows import Window
 from data_prep import gapfill, resample_topo_if_needed
 
-def predict_raster(hls_path, topo_path, out_raster_path, model, patch_size=128, ndval=-9999, batch_size=64):
+def predict_raster(hls_path, topo_path, out_raster_path, model, patch_size=128, step_size=100, ndval=-9999, batch_size=64):
     batch = []
     ulxy = []
     topo_path = resample_topo_if_needed(Path(topo_path))
     topo = rasterio.open(topo_path)
 
-    step_size = 100
     hls_patches_dropped = 0
     topo_patches_dropped = 0    
     ax = np.clip(np.minimum(np.linspace(0, 1, patch_size), np.linspace(1, 0, patch_size)) * 5, 0.01, 1)
@@ -81,3 +81,19 @@ def predict_raster(hls_path, topo_path, out_raster_path, model, patch_size=128, 
         o.set_band_description(1, 'Ht')
 
     topo.close()
+
+if __name__ == "__main__":
+    parse = argparse.ArgumentParser(
+        description="Predicts a vegetation height raster given a HLS, Slope and unet model"
+    )
+    parse.add_argument("--hls_path", help="HLS image path", required=True)
+    parse.add_argument(
+        "--topo_path", help="topo image path with slope as second band", required=True
+    )
+    parse.add_argument("--out_raster_path", help="output predicted raster path", required=True)
+    parse.add_argument("--patch_size", help="patch size, should be the same as what was used when training the model", type=int, default=128)
+    parse.add_argument("--step_size", help="step size for sliding the window of size patch_size over the input rasters", type=int, default=100)
+    parse.add_argument("--ndval", help="nodata value", type=int, default=-9999)
+    parse.add_argument("--batch_size", help="batch size of image patches passed to model.predict", type=int, default=64)
+    args = parse.parse_args()
+    create_training_dataset(**vars(args))
