@@ -111,4 +111,4 @@ if __name__ == "__main__":
     parse.add_argument("--ndval", help="nodata value", type=int, default=-9999)
     parse.add_argument("--batch_size", help="batch size of image patches passed to model.predict", type=int, default=64)
     args = parse.parse_args()
-    create_training_dataset(**vars(args))
+    predict_raster(**vars(args))
