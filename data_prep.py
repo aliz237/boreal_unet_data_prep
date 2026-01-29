@@ -6,6 +6,7 @@ import numpy as np
 import geopandas as gpd
 import pandas as pd
 
+from osgeo import gdal
 import rasterio
 from rasterio.windows import Window
 
