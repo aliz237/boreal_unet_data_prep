@@ -211,19 +211,56 @@ def subset_HLS_bands(hls_path, clean=False):
 
     return hls_path_b1_b6
 
-def resample_topo_if_needed(topo_path):
-    with rasterio.open(topo_path) as t:
-        reproj_needed = t.width != 3000 or t.height != 3000
 
-    if reproj_needed:
-        # we can use rasterio but this is much easier
-        reproj_path = topo_path.with_stem(f'{topo_path.stem}_reproj')
-        cmd = ['gdal_translate', '-tr', '30', '30', '-r', 'bilinear', str(topo_path), str(reproj_path)]
-        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        topo_path.unlink()
-        return reproj_path
+def get_extent(ds):
+    gt = ds.GetGeoTransform()
+    width = ds.RasterXSize
+    height = ds.RasterYSize
 
-    return topo_path
+    xmin = gt[0]
+    ymax = gt[3]
+    xmax = xmin + (width * gt[1])
+    ymin = ymax + (height * gt[5])
+
+    return [xmin, ymin, xmax, ymax]
+
+
+def align_if_needed(hls_path, topo_path):
+    ds1 = gdal.Open(hls_path)
+    ds2 = gdal.Open(topo_path)
+
+    if (ds1.RasterXSize != ds2.RasterXSize) or (ds1.RasterYSize != ds2.RasterYSize):
+        ext1 = get_extent(ds1)
+        ext2 = get_extent(ds2)
+
+        intersection = [
+            max(ext1[0], ext2[0]),
+            max(ext1[1], ext2[1]),
+            min(ext1[2], ext2[2]),
+            min(ext1[3], ext2[3])
+        ]
+
+        warp_options = gdal.WarpOptions(
+            outputBounds=intersection,
+            width=3000,
+            height=3000,
+            resampleAlg='bilinear',
+            format='GTiff',
+            srcNodata=-9999,
+            dstNodata=-9999
+        )
+        hls_path = Path(hls_path)
+        hls_path = hls_path.with_name(hls_path.name.replace('.tif', '_resamp.tif'))
+        topo_path = Path(topo_path)
+        topo_path = topo_path.with_name(topo_path.name.replace('.tif', '_resamp.tif'))
+
+        gdal.Warp(str(hls_path), ds1, options=warp_options)
+        gdal.Warp(str(topo_path), ds2, options=warp_options)
+
+        ds1 = ds2 = None
+        print(f"Calculated Intersection: {intersection}")
+
+    return Path(hls_path), Path(topo_path)
 
 
 def create_training_dataset(

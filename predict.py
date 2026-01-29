@@ -21,9 +21,13 @@ def masked_mse_loss(mask_value=-9999):
 def predict_raster(hls_path, topo_path, out_raster_path, model_path, patch_size=128, step_size=100, ndval=-9999, batch_size=64):
     batch = []
     ulxy = []
-    topo_path = resample_topo_if_needed(Path(topo_path))
-    topo = rasterio.open(topo_path)
+
     hls_path = subset_HLS_bands(Path(hls_path), clean=True)
+
+    hls_path, topo_path = align_if_needed(str(hls_path), str(topo_path))
+    topo = rasterio.open(topo_path)
+
+
     hls_patches_dropped = 0
     topo_patches_dropped = 0    
     ax = np.clip(np.minimum(np.linspace(0, 1, patch_size), np.linspace(1, 0, patch_size)) * 5, 0.01, 1)
