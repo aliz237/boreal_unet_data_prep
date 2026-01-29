@@ -9,7 +9,7 @@ from rasterio.windows import Window
 import tensorflow as tf
 from keras.models import load_model
 
-from data_prep import gapfill, resample_topo_if_needed, subset_HLS_bands
+from data_prep import gapfill, align_if_needed, subset_HLS_bands
 
 def masked_mse_loss(mask_value=-9999):
     def loss(y_true, y_pred):
