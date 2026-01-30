@@ -16,6 +16,10 @@ inputs:
     name: hls_fn_url
     required: true
   - default: ''
+    description: landcover file url
+    name: lc_fn_url
+    required: true
+  - default: ''
     description: model.keras file url
     name: model_fn_url
     required: true
@@ -27,6 +31,10 @@ inputs:
   - default: ''
     description: topo file
     name: topo_fn
+    required: true
+  - default: ''
+    description: land cover file
+    name: lc_fn
     required: true
   - default: ''
     description: model file

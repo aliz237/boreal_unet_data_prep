@@ -3,6 +3,7 @@ from pathlib import Path
 import argparse
 import numpy as np
 
+from osgeo import gdal
 import rasterio
 from rasterio.windows import Window
 
@@ -98,9 +99,26 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, pa
     {topo_patches_dropped} topo_patches_dropped"""
     )
     meta.update({'count': 1, 'nodata': ndval, 'dtype': 'float32'})
-    with rasterio.open(out_raster_path, 'w', **meta) as o:
+    tmp_tif = out_raster_path.replace('.tif', '_temp.tif')
+    with rasterio.open(tmp_tif, 'w', **meta) as o:
         o.write(out_arr, 1)
         o.set_band_description(1, 'Ht')
+    # write tmp_tif as cog
+    gdal.Translate(
+        out_raster_path,
+        tmp_tif,
+        format="COG",
+        noData='-9999',
+        creationOptions=[
+            "COMPRESS=DEFLATE",
+            "OVERVIEW_COUNT=6",
+            "RESAMPLING=AVERAGE",
+            "OVERVIEWS=IGNORE_EXISTING",
+            'NUM_THREADS=ALL_CPUS',
+            "BLOCKSIZE=512"
+        ]
+    )
+    Path(tmp_tif).unlink(missing_ok=True)
 
     topo.close()
 
@@ -112,6 +130,7 @@ if __name__ == "__main__":
     parse.add_argument(
         "--topo_path", help="topo image path with slope as second band", required=True
     )
+    parse.add_argument("--lc_path", help="land cover image path", required=True)
     parse.add_argument("--out_raster_path", help="output predicted raster path", required=True)
     parse.add_argument("--model_path", help="path to UNet model", required=True)
     parse.add_argument("--patch_size", help="patch size, should be the same as what was used when training the model", type=int, default=128)
