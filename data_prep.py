@@ -270,11 +270,8 @@ def create_training_dataset(
 ):
 
     print("rasterizing atl08 to HLS grid")
-    atl08_path = Path(atl08_path)
-    hls_path = Path(hls_path)
-
-    atl08_raster_path = atl08_path.with_suffix(".tif")
-    atl08_to_raster(str(atl08_path), str(hls_path), str(atl08_raster_path))
+    atl08_raster_path = str(Path(atl08_path).with_suffix(".tif"))
+    atl08_to_raster(atl08_path, hls_path, atl08_raster_path)
 
     print("subsetting [B, G, R, NIR, SWIR1, SWIR2] from HLS bands")
     hls_path_b1_b6 = subset_HLS_bands(hls_path, clean=False)
