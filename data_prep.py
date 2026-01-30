@@ -245,10 +245,10 @@ def align_if_needed(hls_path, topo_path, lc_path):
         ]
 
         options_dict = {
-            'outputBounds'=intersection,
-            'width'=3000,
-            'height'=3000,
-            'format'='GTiff'
+            'outputBounds':intersection,
+            'width':3000,
+            'height':3000,
+            'format':'GTiff'
         }
 
         hls_path = hls_path.replace('.tif', '_resamp.tif')
