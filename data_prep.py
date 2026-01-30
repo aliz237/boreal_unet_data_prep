@@ -226,42 +226,46 @@ def get_extent(ds):
     return [xmin, ymin, xmax, ymax]
 
 
-def align_if_needed(hls_path, topo_path):
+def align_if_needed(hls_path, topo_path, lc_path):
     ds1 = gdal.Open(hls_path)
     ds2 = gdal.Open(topo_path)
-
-    if (ds1.RasterXSize != ds2.RasterXSize) or (ds1.RasterYSize != ds2.RasterYSize):
+    ds3 = gdal.Open(lc_path)
+    unique_dims = len(list(set([ds1.RasterXSize, ds2.RasterXSize, ds3.RasterXSize,
+                 ds1.RasterYSize, ds2.RasterYSize, ds3.RasterYSize])))
+    if unique_dims != 1:
         ext1 = get_extent(ds1)
         ext2 = get_extent(ds2)
+        ext3 = get_extent(ds3)
 
         intersection = [
-            max(ext1[0], ext2[0]),
-            max(ext1[1], ext2[1]),
-            min(ext1[2], ext2[2]),
-            min(ext1[3], ext2[3])
+            max(ext1[0], ext2[0], ext3[0]),
+            max(ext1[1], ext2[1], ext3[1]),
+            min(ext1[2], ext2[2], ext3[2]),
+            min(ext1[3], ext2[3], ext3[3])
         ]
 
-        warp_options = gdal.WarpOptions(
-            outputBounds=intersection,
-            width=3000,
-            height=3000,
-            resampleAlg='bilinear',
-            format='GTiff',
-            srcNodata=-9999,
-            dstNodata=-9999
-        )
+        options_dict = {
+            'outputBounds'=intersection,
+            'width'=3000,
+            'height'=3000,
+            'format'='GTiff'
+        }
+
         hls_path = Path(hls_path)
         hls_path = hls_path.with_name(hls_path.name.replace('.tif', '_resamp.tif'))
         topo_path = Path(topo_path)
         topo_path = topo_path.with_name(topo_path.name.replace('.tif', '_resamp.tif'))
+        lc_path = Path(lc_path)
+        lc_path = lc_path.with_name(lc_path.name.replace('.tif', '_resamp.tif'))
 
-        gdal.Warp(str(hls_path), ds1, options=warp_options)
-        gdal.Warp(str(topo_path), ds2, options=warp_options)
+        gdal.Warp(str(hls_path), ds1, resampleAlg='bilinear', srcNodata=-9999, dstNodata=-9999, **options_dict)
+        gdal.Warp(str(topo_path), ds2, resampleAlg='bilinear', srcNodata=-9999, dstNodata=-9999, **options_dict))
+        gdal.Warp(str(lc_path), ds3, resampleAlg='near', srcNodata=0, dstNodata=0, **options_dict))
 
-        ds1 = ds2 = None
+        ds1 = ds2 = ds3 = None
         print(f"Calculated Intersection: {intersection}")
 
-    return Path(hls_path), Path(topo_path)
+    return Path(hls_path), Path(topo_path), Path(lc_path)
 
 
 def create_training_dataset(

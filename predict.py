@@ -18,15 +18,14 @@ def masked_mse_loss(mask_value=-9999):
         return tf.reduce_sum(squared_error) / (tf.reduce_sum(mask) + 1e-6)
     return loss
 
-def predict_raster(hls_path, topo_path, out_raster_path, model_path, patch_size=128, step_size=100, ndval=-9999, batch_size=64):
+def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, patch_size=128, step_size=100, ndval=-9999, batch_size=64):
     batch = []
     ulxy = []
 
     hls_path = subset_HLS_bands(Path(hls_path), clean=True)
 
-    hls_path, topo_path = align_if_needed(str(hls_path), str(topo_path))
+    hls_path, topo_path, lc_path = align_if_needed(str(hls_path), str(topo_path), str(lc_path))
     topo = rasterio.open(topo_path)
-
 
     hls_patches_dropped = 0
     topo_patches_dropped = 0    
@@ -89,6 +88,11 @@ def predict_raster(hls_path, topo_path, out_raster_path, model_path, patch_size=
     # out_arr[count_arr != 0] /= count_arr
     out_arr = np.divide(out_arr, count_arr, where=count_arr != 0)
     out_arr[count_arr == 0] = ndval
+    # land cover mask
+    with rasterio.open(lc_path) as lc:
+        lc_arr = lc.read(1)
+        out_arr[np.isin(lc_arr, [0, 50, 60, 70, 80, 200])] = ndval
+
     print(f'min={np.min(out_arr)}, min={np.min(out_arr[out_arr != ndval])}')
     print(f"""{hls_patches_dropped} hls_patches_dropped,
     {topo_patches_dropped} topo_patches_dropped"""
