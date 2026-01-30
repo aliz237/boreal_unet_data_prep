@@ -111,7 +111,7 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, pa
         noData='-9999',
         creationOptions=[
             "COMPRESS=DEFLATE",
-            "OVERVIEW_COUNT=6",
+            "OVERVIEW_COUNT=4",
             "RESAMPLING=AVERAGE",
             "OVERVIEWS=IGNORE_EXISTING",
             'NUM_THREADS=ALL_CPUS',
