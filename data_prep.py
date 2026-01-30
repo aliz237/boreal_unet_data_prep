@@ -194,7 +194,7 @@ def atl08_to_raster(atl08_path, hls_path, out_raster_path, ndval=-9999):
 
 def subset_HLS_bands(hls_path, clean=False):
     # just get the spectral bands, no need for derived indexes like ndvi etc
-    hls_path_b1_b6 = hls_path.with_name(hls_path.stem + "_b1_b6.tif")
+    hls_path_b1_b6 = hls_path.replace(".tif", "_b1_b6.tif")
     cmd = [
         "gdal_translate",
         "-b", "1",
@@ -203,12 +203,12 @@ def subset_HLS_bands(hls_path, clean=False):
         "-b", "4",
         "-b", "5",
         "-b", "6",
-        str(hls_path),
-        str(hls_path_b1_b6),
+        hls_path,
+        hls_path_b1_b6,
     ]
     subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if clean:
-        hls_path.unlink()
+        Path(hls_path).unlink()
 
     return hls_path_b1_b6
 
@@ -251,16 +251,13 @@ def align_if_needed(hls_path, topo_path, lc_path):
             'format'='GTiff'
         }
 
-        hls_path = Path(hls_path)
-        hls_path = hls_path.with_name(hls_path.name.replace('.tif', '_resamp.tif'))
-        topo_path = Path(topo_path)
-        topo_path = topo_path.with_name(topo_path.name.replace('.tif', '_resamp.tif'))
-        lc_path = Path(lc_path)
-        lc_path = lc_path.with_name(lc_path.name.replace('.tif', '_resamp.tif'))
+        hls_path = hls_path.replace('.tif', '_resamp.tif')
+        topo_path = topo_path.replace('.tif', '_resamp.tif')
+        lc_path = lc_path.replace('.tif', '_resamp.tif')
 
-        gdal.Warp(str(hls_path), ds1, resampleAlg='bilinear', srcNodata=-9999, dstNodata=-9999, **options_dict)
-        gdal.Warp(str(topo_path), ds2, resampleAlg='bilinear', srcNodata=-9999, dstNodata=-9999, **options_dict))
-        gdal.Warp(str(lc_path), ds3, resampleAlg='near', srcNodata=0, dstNodata=0, **options_dict))
+        gdal.Warp(hls_path, ds1, resampleAlg='bilinear', srcNodata=-9999, dstNodata=-9999, **options_dict)
+        gdal.Warp(topo_path, ds2, resampleAlg='bilinear', srcNodata=-9999, dstNodata=-9999, **options_dict)
+        gdal.Warp(lc_path, ds3, resampleAlg='near', srcNodata=0, dstNodata=0, **options_dict)
 
         ds1 = ds2 = ds3 = None
         print(f"Calculated Intersection: {intersection}")

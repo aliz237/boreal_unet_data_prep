@@ -23,9 +23,9 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, pa
     batch = []
     ulxy = []
 
-    hls_path = subset_HLS_bands(Path(hls_path), clean=True)
+    hls_path = subset_HLS_bands(hls_path, clean=True)
 
-    hls_path, topo_path, lc_path = align_if_needed(str(hls_path), str(topo_path), str(lc_path))
+    hls_path, topo_path, lc_path = align_if_needed(hls_path, topo_path, lc_path)
     topo = rasterio.open(topo_path)
 
     hls_patches_dropped = 0
