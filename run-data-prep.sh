@@ -9,4 +9,5 @@ conda run --live-stream --name data_prep python ${basedir}/data_prep.py \
       --slope_path ${4} \
       --atl08_path ${5} \
       --patch_size ${6} \
-      --overlap ${7}
+      --overlap ${7} \
+      --rh ${8}

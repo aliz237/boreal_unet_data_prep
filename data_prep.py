@@ -173,7 +173,7 @@ def extract_patches_tfrec(
         )
 
 
-def atl08_to_raster(atl08_path, hls_path, out_raster_path, ndval=-9999):
+def atl08_to_raster(atl08_path, hls_path, out_raster_path, ndval=-9999, rh='h_canopy'):
     df = gpd.read_parquet(atl08_path)
     with rasterio.open(hls_path) as hls:
         meta = hls.meta.copy()
@@ -183,7 +183,7 @@ def atl08_to_raster(atl08_path, hls_path, out_raster_path, ndval=-9999):
         rows = np.floor(rows).astype(int)
         mask = (rows >= 0) & (cols >= 0) & (rows < hls.height) & (cols < hls.width)
         rows, cols = rows[mask], cols[mask]
-        rh98 = df["h_canopy"].values[mask]
+        rh98 = df[rh].values[mask]
 
     out = np.full((h, w), ndval, dtype=np.float32)
     out[rows, cols] = rh98
@@ -266,12 +266,12 @@ def align_if_needed(hls_path, topo_path, lc_path):
 
 
 def create_training_dataset(
-    tile_num, year, atl08_path, hls_path, slope_path, patch_size=128, overlap=32
+    tile_num, year, atl08_path, hls_path, slope_path, patch_size=128, overlap=32, rh='h_canopy'
 ):
 
     print("rasterizing atl08 to HLS grid")
     atl08_raster_path = str(Path(atl08_path).with_suffix(".tif"))
-    atl08_to_raster(atl08_path, hls_path, atl08_raster_path)
+    atl08_to_raster(atl08_path, hls_path, atl08_raster_path, rh=rh)
 
     print("subsetting [B, G, R, NIR, SWIR1, SWIR2] from HLS bands")
     hls_path_b1_b6 = subset_HLS_bands(hls_path, clean=False)
@@ -299,6 +299,7 @@ if __name__ == "__main__":
     parse.add_argument("--atl08_path", help="atl08 parquet file", required=True)
     parse.add_argument("--patch_size", help="training image patch size", type=int, default=128)
     parse.add_argument("--overlap", help="overlap between training patches", type=int, default=32)
+    parse.add_argument("--rh", help="RH metric to use as learning target (Y in f^(X) = Y)", default='h_canopy')
     args = parse.parse_args()
 
     create_training_dataset(**vars(args))
