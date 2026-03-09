@@ -12,6 +12,12 @@ from rasterio.windows import Window
 
 import tensorflow as tf
 
+def bands_used(feature):
+    return {
+        'hls': list(range(1, 7)) + [12], # Spectral + NBR
+        'topo': [2, 3, 4] # Slope, TSRI, TPI
+    }[feature]
+
 # The following functions can be used to convert a value to a type compatible with tf.train.Example.
 # stolen from https://www.tensorflow.org/tutorials/load_data/tfrecord
 def _float_feature(value):
@@ -74,6 +80,30 @@ def gapfill(arr, nodata_thresh=0.6):
             return False
     return True
 
+def normalize_stack(in_raster_path, out_raster_path, bands):
+    with rasterio.open(in_raster_path) as src:
+        arr = src.read(bands).astype('float32')
+        profile = src.profile
+        for i in range(arr.shape[0]):
+            validmask = arr[i] != -9999
+            mu = np.mean(arr[i][validmask])
+            sd = np.std(arr[i][validmask])
+            normalized = (arr[i] - mu) / sd
+            arr[i] = np.clip(normalized, -3, 3) / 3.0
+            arr[i][~validmask] = -9999
+
+    profile.update({
+        'dtype': 'float32',
+        'count': len(bands),
+        'nodata': -9999
+    })
+
+    with rasterio.open(out_raster_path, 'w', **profile) as dst:
+        dst.write(arr)
+
+    return out_raster_path
+
+
 def extract_patches_tfrec(
     hls_path,
     atl08_path,
@@ -100,7 +130,8 @@ def extract_patches_tfrec(
     hls_patches_dropped = 0
     topo_patches_dropped = 0
     ndval_thresh = 0.30
-    patch_depth = 8 # 6 HLS channels, 1 slope channel, and atl08 label.
+    patch_depth = hls.count + topo.count + atl08.count
+    # patch_depth = 11 # 6 HLS spectral channels, 1 NBR, 1 slope, 1 TSRI, 1 TPI, and 1 atl08 label.
     # 120 is median valid pixel count of lidar track in ATL08 128x128 patches
     # the other one is 70% of diagonal of a patch (so close to complete and decent lidar track)
     min_valid_lidar_per_batch = int(min(patch_size * np.sqrt(2) * 0.7, 120))
@@ -130,20 +161,21 @@ def extract_patches_tfrec(
                 hls_patches_dropped += 1
                 continue
             # same for topo
-            slope = topo.read([2], window=win).astype(np.float32)
-            slope[slope == ndval] = np.nan
-            slope = np.clip(slope, 0, 90)
-            slope /= 90.0
-            if np.sum(np.isnan(slope)) >= ndval_thresh * patch_size**2:
+            topo_arr = topo.read(window=win).astype(np.float32)
+            topo_arr[topo_arr == ndval] = np.nan
+            if np.any(
+                np.isnan(topo_arr).sum(axis=(1, 2)) >= ndval_thresh * patch_size**2
+            ):
                 continue
-            if not gapfill(slope):
+            # fill NA
+            if not gapfill(topo_arr):
                 topo_patches_dropped += 1
                 continue
             # save patches on disk
             n += 1
             # prep to write as TFrecord
             # concat hls, topo features and atl08 label to build one training example
-            arr = np.concatenate([hls_arr, slope, lab_arr])
+            arr = np.concatenate([hls_arr, topo_arr, lab_arr])
             # reorder as needed by model.fit, channels last
             arr = np.moveaxis(arr, 0, -1)
             # serialize the arr to write as a tfrecord
@@ -190,27 +222,6 @@ def atl08_to_raster(atl08_path, hls_path, out_raster_path, ndval=-9999, rh='h_ca
     meta.update({"count": 1, "nodata": ndval, "dtype": "float32"})
     with rasterio.open(out_raster_path, "w", **meta) as o:
         o.write(out, 1)
-
-
-def subset_HLS_bands(hls_path, clean=False):
-    # just get the spectral bands, no need for derived indexes like ndvi etc
-    hls_path_b1_b6 = hls_path.replace(".tif", "_b1_b6.tif")
-    cmd = [
-        "gdal_translate",
-        "-b", "1",
-        "-b", "2",
-        "-b", "3",
-        "-b", "4",
-        "-b", "5",
-        "-b", "6",
-        hls_path,
-        hls_path_b1_b6,
-    ]
-    subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    if clean:
-        Path(hls_path).unlink()
-
-    return hls_path_b1_b6
 
 
 def get_extent(ds):
@@ -266,21 +277,21 @@ def align_if_needed(hls_path, topo_path, lc_path):
 
 
 def create_training_dataset(
-    tile_num, year, atl08_path, hls_path, slope_path, patch_size=128, overlap=32, rh='h_canopy'
+    tile_num, year, atl08_path, hls_path, topo_path, patch_size=128, overlap=32, rh='h_canopy'
 ):
 
     print("rasterizing atl08 to HLS grid")
     atl08_raster_path = str(Path(atl08_path).with_suffix(".tif"))
     atl08_to_raster(atl08_path, hls_path, atl08_raster_path, rh=rh)
 
-    print("subsetting [B, G, R, NIR, SWIR1, SWIR2] from HLS bands")
-    hls_path_b1_b6 = subset_HLS_bands(hls_path, clean=False)
+    hls_path = normalize_stack(hls_path, hls_path.replace('.tif', '_norm.tif'), bands_used('hls'))
+    topo_path = normalize_stack(topo_path, topo_path.replace('.tif', '_norm.tif'), bands_used('topo'))
 
     print(f"Extracting patches for tile-year: {tile_num}-{year}")
     extract_patches_tfrec(
-        hls_path_b1_b6,
+        hls_path,
         atl08_raster_path,
-        slope_path,
+        topo_path,
         tfrecord_path=f"output/{tile_num}_{year}_{patch_size}_{overlap}.tfrecord.gz",
         patch_size=patch_size,
         overlap=overlap
@@ -294,7 +305,7 @@ if __name__ == "__main__":
     parse.add_argument("--year", help="atl08 year", required=True)
     parse.add_argument("--hls_path", help="HLS image path", required=True)
     parse.add_argument(
-        "--slope_path", help="topo image path with slope as second band", required=True
+        "--topo_path", help="topo image path with slope as second band", required=True
     )
     parse.add_argument("--atl08_path", help="atl08 parquet file", required=True)
     parse.add_argument("--patch_size", help="training image patch size", type=int, default=128)

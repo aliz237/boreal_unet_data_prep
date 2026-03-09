@@ -1,6 +1,6 @@
 algorithm_description: Create tfrecords from HLS, TOPO, ATL08 in boreal forests
 algorithm_name: boreal_unet_data_prep
-algorithm_version: main
+algorithm_version: dev
 build_command: boreal_unet_data_prep/build-env.sh
 disk_space: 80GB
 docker_container_url: mas.maap-project.org/root/maap-workspaces/custom_images/maap_base:v4.3.0

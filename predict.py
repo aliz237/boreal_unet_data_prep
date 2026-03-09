@@ -10,7 +10,7 @@ from rasterio.windows import Window
 import tensorflow as tf
 from keras.models import load_model
 
-from data_prep import gapfill, align_if_needed, subset_HLS_bands
+from data_prep import gapfill, align_if_needed, normalize_stack, bands_used
 
 def masked_mse_loss(mask_value=-9999):
     def loss(y_true, y_pred):
@@ -23,7 +23,8 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, pa
     batch = []
     ulxy = []
 
-    hls_path = subset_HLS_bands(hls_path, clean=True)
+    hls_path = normalize_stack(hls_path, hls_path.replace('.tif', '_norm.tif'), bands_used('hls'))
+    topo_path = normalize_stack(topo_path, topo_path.replace('.tif', '_norm.tif'), bands_used('topo'))
 
     hls_path, topo_path, lc_path = align_if_needed(hls_path, topo_path, lc_path)
     topo = rasterio.open(topo_path)
@@ -56,17 +57,15 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, pa
                     hls_patches_dropped += 1
                     continue
                 # same for topo
-                slope = topo.read([2], window=win).astype(np.float32)
-                slope[slope == ndval] = np.nan
-                slope = np.clip(slope, 0, 90)
-                slope /= 90.0
-                if np.isnan(slope).all():
+                topo_arr = topo.read(window=win).astype(np.float32)
+                topo_arr[topo_arr == ndval] = np.nan
+                if np.any(np.isnan(topo_arr).all(axis=(1,2))):
                     continue
-                if not gapfill(slope):
+                if not gapfill(topo_arr):
                     topo_patches_dropped += 1
                     continue
 
-                X = np.concatenate([hls_arr, slope])
+                X = np.concatenate([hls_arr, topo_arr])
                 batch.append(np.moveaxis(X, 0, -1))
                 ulxy.append((j, i))
 
