@@ -10,7 +10,7 @@ from rasterio.windows import Window
 import tensorflow as tf
 from keras.models import load_model
 
-from data_prep import gapfill, align_if_needed, normalize_stack, bands_used
+from data_prep import gapfill, align_if_needed, normalize_stack, Consts
 
 def masked_mse_loss(mask_value=-9999):
     def loss(y_true, y_pred):
@@ -23,8 +23,8 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, pa
     batch = []
     ulxy = []
 
-    hls_path = normalize_stack(hls_path, hls_path.replace('.tif', '_norm.tif'), bands_used('hls'))
-    topo_path = normalize_stack(topo_path, topo_path.replace('.tif', '_norm.tif'), bands_used('topo'))
+    hls_path = normalize_stack(hls_path, hls_path.replace('.tif', '_norm.tif'), Consts.HLS_BANDS)
+    topo_path = normalize_stack(topo_path, topo_path.replace('.tif', '_norm.tif'), Consts.TOPO_BANDS)
 
     hls_path, topo_path, lc_path = align_if_needed(hls_path, topo_path, lc_path)
     topo = rasterio.open(topo_path)

@@ -12,11 +12,10 @@ from rasterio.windows import Window
 
 import tensorflow as tf
 
-def bands_used(feature):
-    return {
-        'hls': list(range(1, 7)) + [12], # Spectral + NBR
-        'topo': [2, 3, 4] # Slope, TSRI, TPI
-    }[feature]
+class Consts:
+    HLS_BANDS = tuple(range(1, 7)) + (12,)
+    TOPO_BANDS = (2, 3, 4)
+    MAX_HEIGHT = 100.0
 
 # The following functions can be used to convert a value to a type compatible with tf.train.Example.
 # stolen from https://www.tensorflow.org/tutorials/load_data/tfrecord
@@ -218,7 +217,7 @@ def atl08_to_raster(atl08_path, hls_path, out_raster_path, ndval=-9999, rh='h_ca
         rh98 = df[rh].values[mask]
 
     out = np.full((h, w), ndval, dtype=np.float32)
-    out[rows, cols] = rh98
+    out[rows, cols] = rh98 / Consts.MAX_HEIGHT
     meta.update({"count": 1, "nodata": ndval, "dtype": "float32"})
     with rasterio.open(out_raster_path, "w", **meta) as o:
         o.write(out, 1)
@@ -284,8 +283,8 @@ def create_training_dataset(
     atl08_raster_path = str(Path(atl08_path).with_suffix(".tif"))
     atl08_to_raster(atl08_path, hls_path, atl08_raster_path, rh=rh)
 
-    hls_path = normalize_stack(hls_path, hls_path.replace('.tif', '_norm.tif'), bands_used('hls'))
-    topo_path = normalize_stack(topo_path, topo_path.replace('.tif', '_norm.tif'), bands_used('topo'))
+    hls_path = normalize_stack(hls_path, hls_path.replace('.tif', '_norm.tif'), Consts.HLS_BANDS)
+    topo_path = normalize_stack(topo_path, topo_path.replace('.tif', '_norm.tif'), Consts.TOPO_BANDS)
 
     print(f"Extracting patches for tile-year: {tile_num}-{year}")
     extract_patches_tfrec(
