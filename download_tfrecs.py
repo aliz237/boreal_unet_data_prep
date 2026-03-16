@@ -32,7 +32,7 @@ if __name__ == '__main__':
     parse = argparse.ArgumentParser(
         description="Downloads tfrecords given an s3 tindex csv"
     )
-    parse.add_argument("--tindex", help="tindex csv with tile_num and s3 paths", required=True)
+    parse.add_argument("--tindex_path", help="tindex csv with tile_num and s3 paths", required=True)
     parse.add_argument("--out_dir", help="local output dir for .tfrecord.gz files to be stored", required=True)
     parse.add_argument("--workers", help="tnumber of cuncurrent workers", type=int, default=10)
     args = parse.parse_args()
