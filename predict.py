@@ -19,6 +19,13 @@ def masked_mse_loss(mask_value=-9999):
         return tf.reduce_sum(squared_error) / (tf.reduce_sum(mask) + 1e-6)
     return loss
 
+def masked_mae_loss(mask_value=-9999):
+    def loss(y_true, y_pred):
+        mask = tf.cast(tf.not_equal(y_true, mask_value), tf.float32)
+        abs_error = tf.abs(y_true - y_pred) * mask
+        return tf.reduce_sum(abs_error) / (tf.reduce_sum(mask) + 1e-6)
+    return loss
+
 def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, patch_size=128, step_size=100, ndval=-9999, batch_size=64):
     batch = []
     ulxy = []
@@ -33,7 +40,7 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, pa
     topo_patches_dropped = 0    
     ax = np.clip(np.minimum(np.linspace(0, 1, patch_size), np.linspace(1, 0, patch_size)) * 5, 0.01, 1)
     kernel = np.outer(ax, ax)
-    model = load_model(model_path, custom_objects={'loss': masked_mse_loss})
+    model = load_model(model_path, custom_objects={'loss': masked_mae_loss})
 
     with rasterio.open(hls_path) as hls:
         w, h, c = hls.width, hls.height, hls.count
@@ -70,7 +77,7 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, pa
                 ulxy.append((j, i))
 
                 if len(batch) > batch_size:
-                    preds = model.predict(np.array(batch))
+                    preds = model.predict(np.array(batch)) * Consts.MAX_HEIGHT
                     for (x, y), pred in zip(ulxy, preds):
                         out_arr[y:y+patch_size, x:x+patch_size] += pred[:,:,0] * kernel
                         count_arr[y:y+patch_size, x:x+patch_size] += kernel
@@ -78,7 +85,7 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, pa
                     ulxy = []
     
     if batch:
-        preds = model.predict(np.array(batch))
+        preds = model.predict(np.array(batch)) * Consts.MAX_HEIGHT
         for (x, y), pred in zip(ulxy, preds):
             out_arr[y:y+patch_size, x:x+patch_size] += pred[:,:,0] * kernel
             count_arr[y:y+patch_size, x:x+patch_size] += kernel
