@@ -10,5 +10,6 @@ dependencies:
     - geopandas=1.0.1
     - pyarrow=17.0.0
     - rasterio=1.4.2
+    - s3fs=2024.10.0
     - pip:
         - tensorflow==2.17.0
