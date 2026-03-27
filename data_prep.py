@@ -280,7 +280,7 @@ def align_if_needed(hls_path, topo_path, lc_path):
     return Path(hls_path), Path(topo_path), Path(lc_path)
 
 def reference_bounds(ref_raster):
-    ref_ds = gda.Open(ref_raster)
+    ref_ds = gdal.Open(ref_raster)
     gt = ref_ds.GetGeoTransform()
     xmin = gt[0]
     ymax = gt[3]
