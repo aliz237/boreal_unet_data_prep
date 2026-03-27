@@ -10,4 +10,5 @@ conda run --live-stream --name data_prep python ${basedir}/data_prep.py \
       --atl08_path ${5} \
       --patch_size ${6} \
       --overlap ${7} \
-      --rh ${8}
+      --rh ${8} \
+      --fire_path "${9:-}"

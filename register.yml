@@ -53,6 +53,10 @@ inputs:
     description: RH metric to use as learning target
     name: rh
     required: true
+  - default: ''
+    description: fire geopackage path in case a fire mask is to be applied
+    name: fire_path
+    required: False
 
 queue: maap-dps-worker-32gb
 repository_url: https://github.com/aliz237/boreal_unet_data_prep

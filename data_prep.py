@@ -12,6 +12,8 @@ from rasterio.windows import Window
 
 import tensorflow as tf
 
+import s3fs
+
 class Consts:
     HLS_BANDS = tuple(range(1, 7)) + (12,)
     TOPO_BANDS = (2, 3, 4)
@@ -79,12 +81,17 @@ def gapfill(arr, nodata_thresh=0.6):
             return False
     return True
 
-def normalize_stack(in_raster_path, out_raster_path, bands):
+def normalize_stack(in_raster_path, out_raster_path, bands, mask_path=None):
+    if mask_path:
+        mask = rasterio.open(mask_path).read(1).astype('int32')
+
     with rasterio.open(in_raster_path) as src:
         arr = src.read(bands).astype('float32')
         profile = src.profile
         for i in range(arr.shape[0]):
             validmask = arr[i] != -9999
+            if mask_path:
+                validmask &= (mask == 1)
             mu = np.mean(arr[i][validmask])
             sd = np.std(arr[i][validmask])
             normalized = (arr[i] - mu) / sd
@@ -274,17 +281,54 @@ def align_if_needed(hls_path, topo_path, lc_path):
 
     return Path(hls_path), Path(topo_path), Path(lc_path)
 
+def reference_bounds(ref_raster):
+    ref_ds = gda.Open(ref_raster)
+    gt = ref_ds.GetGeoTransform()
+    xmin = gt[0]
+    ymax = gt[3]
+    xmax = xmin + (ref_ds.RasterXSize * gt[1])
+    ymin = ymax + (ref_ds.RasterYSize * gt[5])
+    bounds = (xmin, ymin, xmax, ymax)
+    ref_ds = None
+    return bounds
+
+def create_fire_mask(fire_path, hls_path):
+    bounds = reference_bounds(hls_path)
+    # download the fire gpkg locally first
+    s3 = s3fs.S3FileSystem(annon=False)
+    loca_fire_path = str(Path('input')/Path(fire_path).name)
+    s3.get_file(fire_path, local_fire_path)
+    out_path = local_fire_path.replace('.gpkg', '.tif')
+
+    ds = gdal.Rasterize(
+        out_path,
+        local_fire_path,
+        format="GTiff",
+        initValues=0,
+        burnValues=[1],
+        outputBounds=bounds,
+        xRes=30,
+        yRes=30,
+        outputType=gdal.GDT_Int32,
+        creationOptions=["COMPRESS=LZW"]
+    )
+    ds = None
+    return out_path
 
 def create_training_dataset(
-    tile_num, year, atl08_path, hls_path, topo_path, patch_size=128, overlap=32, rh='h_canopy'
+    tile_num, year, atl08_path, hls_path, topo_path, patch_size=128, overlap=32, rh='h_canopy', fire_path=''
 ):
 
     print("rasterizing atl08 to HLS grid")
     atl08_raster_path = str(Path(atl08_path).with_suffix(".tif"))
     atl08_to_raster(atl08_path, hls_path, atl08_raster_path, rh=rh)
+    if fire_path:
+        mask_path = create_fire_mask(fire_path, hls_path)
+    else:
+        mask_path = None
 
-    hls_path = normalize_stack(hls_path, hls_path.replace('.tif', '_norm.tif'), Consts.HLS_BANDS)
-    topo_path = normalize_stack(topo_path, topo_path.replace('.tif', '_norm.tif'), Consts.TOPO_BANDS)
+    hls_path = normalize_stack(hls_path, hls_path.replace('.tif', '_norm.tif'), Consts.HLS_BANDS, mask_path=mask_path)
+    topo_path = normalize_stack(topo_path, topo_path.replace('.tif', '_norm.tif'), Consts.TOPO_BANDS, mask_path=mask_path)
 
     print(f"Extracting patches for tile-year: {tile_num}-{year}")
     extract_patches_tfrec(
@@ -303,6 +347,7 @@ if __name__ == "__main__":
     parse.add_argument("--tile_num", help="boreal tile number", required=True)
     parse.add_argument("--year", help="atl08 year", required=True)
     parse.add_argument("--hls_path", help="HLS image path", required=True)
+    parse.add_argument("--fire_path", help="fire polygon path", required=False, default='')
     parse.add_argument(
         "--topo_path", help="topo image path with slope as second band", required=True
     )
