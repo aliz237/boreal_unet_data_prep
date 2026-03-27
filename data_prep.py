@@ -319,9 +319,6 @@ def create_training_dataset(
     tile_num, year, atl08_path, hls_path, topo_path, patch_size=128, overlap=32, rh='h_canopy', fire_path=''
 ):
 
-    print("rasterizing atl08 to HLS grid")
-    atl08_raster_path = str(Path(atl08_path).with_suffix(".tif"))
-    atl08_to_raster(atl08_path, hls_path, atl08_raster_path, rh=rh)
     if fire_path:
         mask_path = create_fire_mask(fire_path, hls_path, year)
         if mask_path is None:
@@ -329,6 +326,10 @@ def create_training_dataset(
             return None
     else:
         mask_path = None
+
+    print("rasterizing atl08 to HLS grid")
+    atl08_raster_path = str(Path(atl08_path).with_suffix(".tif"))
+    atl08_to_raster(atl08_path, hls_path, atl08_raster_path, rh=rh)
 
     hls_path = normalize_stack(hls_path, hls_path.replace('.tif', '_norm.tif'), Consts.HLS_BANDS, mask_path=mask_path)
     topo_path = normalize_stack(topo_path, topo_path.replace('.tif', '_norm.tif'), Consts.TOPO_BANDS, mask_path=mask_path)
