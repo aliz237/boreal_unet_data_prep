@@ -294,6 +294,8 @@ def create_fire_mask(fire_path, hls_path, year):
     bounds = reference_bounds(hls_path)
     f_df = gpd.read_file(fire_path)
     f_df = f_df[f_df.atl08_years.str.contains(str(year))]
+    if f_df.shape[0] == 0:
+        return None
     local_fire_path = Path('input')/Path(fire_path).name
     out_path = local_fire_path.with_suffix('.tif')
     f_df.to_file(str(local_fire_path))
@@ -322,6 +324,9 @@ def create_training_dataset(
     atl08_to_raster(atl08_path, hls_path, atl08_raster_path, rh=rh)
     if fire_path:
         mask_path = create_fire_mask(fire_path, hls_path, year)
+        if mask_path is None:
+            print(f'no fires intersect atl08-{year}, no tfrecords will be created.')
+            return None
     else:
         mask_path = None
 
