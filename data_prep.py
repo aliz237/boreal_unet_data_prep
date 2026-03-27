@@ -12,8 +12,6 @@ from rasterio.windows import Window
 
 import tensorflow as tf
 
-import s3fs
-
 class Consts:
     HLS_BANDS = tuple(range(1, 7)) + (12,)
     TOPO_BANDS = (2, 3, 4)
@@ -292,17 +290,17 @@ def reference_bounds(ref_raster):
     ref_ds = None
     return bounds
 
-def create_fire_mask(fire_path, hls_path):
+def create_fire_mask(fire_path, hls_path, year):
     bounds = reference_bounds(hls_path)
-    # download the fire gpkg locally first
-    s3 = s3fs.S3FileSystem(annon=False)
-    loca_fire_path = str(Path('input')/Path(fire_path).name)
-    s3.get_file(fire_path, local_fire_path)
-    out_path = local_fire_path.replace('.gpkg', '.tif')
+    f_df = gpd.read_file(fire_path)
+    f_df = f_df[f_df.atl08_years.str.contains(str(year))]
+    local_fire_path = Path('input')/Path(fire_path).name
+    out_path = local_fire_path.with_suffix('.tif')
+    f_df.to_file(str(local_fire_path))
 
     ds = gdal.Rasterize(
-        out_path,
-        local_fire_path,
+        str(out_path),
+        str(local_fire_path),
         format="GTiff",
         initValues=0,
         burnValues=[1],
@@ -323,7 +321,7 @@ def create_training_dataset(
     atl08_raster_path = str(Path(atl08_path).with_suffix(".tif"))
     atl08_to_raster(atl08_path, hls_path, atl08_raster_path, rh=rh)
     if fire_path:
-        mask_path = create_fire_mask(fire_path, hls_path)
+        mask_path = create_fire_mask(fire_path, hls_path, year)
     else:
         mask_path = None
 
