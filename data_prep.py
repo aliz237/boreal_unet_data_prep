@@ -13,9 +13,26 @@ from rasterio.windows import Window
 import tensorflow as tf
 
 class Consts:
-    HLS_BANDS = tuple(range(1, 7)) + (12,)
-    TOPO_BANDS = (2, 3, 4)
-    MAX_HEIGHT = 100.0
+    HLS_BANDS = {
+        'blue': {'num': 1, 'norm': None},
+        'green': {'num': 2, 'norm': None},
+        'red': {'num': 3, 'norm': None},
+        'nir': {'num': 4, 'norm': None},
+        'swir1': {'num': 5, 'norm': None},
+        'swir2': {'num': 6, 'norm': None},
+        'nbr': {'num': 7, 'norm': lambda x: (x + 1) / 2},
+    }
+    TOPO_BANDS = {
+        'elevation': {'num': 1, 'norm': None},
+        'slope': {'num': 2, 'norm': lambda x: np.clip(x, 0, 90) / Consts.MAX_SLOPE},
+        'tsri': {'num': 3, 'norm': lambda x: np.clip(x, 0, 1)},
+        'tpi': {'num': 4, 'norm': None},
+        'slopemask': {'num': 5, 'norm': None}
+    }
+    # normalization parameters
+    MAX_SLOPE = 90.0
+    MAX_HEIGHT = 100.0 # in meters
+    MAX_AGB = 500.0 # in MG/ha
 
 # The following functions can be used to convert a value to a type compatible with tf.train.Example.
 # stolen from https://www.tensorflow.org/tutorials/load_data/tfrecord
@@ -79,34 +96,24 @@ def gapfill(arr, nodata_thresh=0.6):
             return False
     return True
 
-def normalize_stack(in_raster_path, out_raster_path, bands, mask_path=None):
+def normalize_bands(in_raster_path, out_raster_path, band_defs, band_names, mask_path=None):
+    selected = {k: v for k, v in band_defs.items() if k in band_names}
     if mask_path:
         mask = rasterio.open(mask_path).read(1).astype('int32')
-
     with rasterio.open(in_raster_path) as src:
-        arr = src.read(bands).astype('float32')
+        arr = src.read([v['num'] for v in selected.values()]).astype('float32')
         profile = src.profile
-        for i in range(arr.shape[0]):
-            validmask = arr[i] != -9999
-            if mask_path:
-                validmask &= (mask == 1)
-            mu = np.mean(arr[i][validmask])
-            sd = np.std(arr[i][validmask])
-            normalized = (arr[i] - mu) / sd
-            arr[i] = np.clip(normalized, -3, 3) / 3.0
-            arr[i][~validmask] = -9999
+    for i, (name, meta) in enumerate(selected.items()):
+        validmask = arr[i] != -9999
+        if mask_path:
+            validmask &= (mask == 1)
+        if meta['norm']:
+            arr[i][validmask] = meta['norm'](arr[i][validmask])
 
-    profile.update({
-        'dtype': 'float32',
-        'count': len(bands),
-        'nodata': -9999
-    })
-
+    profile.update({'dtype': 'float32', 'count': len(selected), 'nodata': -9999})
     with rasterio.open(out_raster_path, 'w', **profile) as dst:
         dst.write(arr)
-
     return out_raster_path
-
 
 def extract_patches_tfrec(
     hls_path,
@@ -135,7 +142,8 @@ def extract_patches_tfrec(
     topo_patches_dropped = 0
     ndval_thresh = 0.30
     patch_depth = hls.count + topo.count + atl08.count
-    # patch_depth = 11 # 6 HLS spectral channels, 1 NBR, 1 slope, 1 TSRI, 1 TPI, and 1 atl08 label.
+    print(hls.count, topo.count, atl08.count, patch_depth)
+    # patch_depth = 11 # 6 HLS spectral channels, 1 NBR, 1 slope, 1 TSRI, and 2 atl08 label.
     # 120 is median valid pixel count of lidar track in ATL08 128x128 patches
     # the other one is 70% of diagonal of a patch (so close to complete and decent lidar track)
     min_valid_lidar_per_batch = int(min(patch_size * np.sqrt(2) * 0.7, 120))
@@ -149,8 +157,10 @@ def extract_patches_tfrec(
             # read ATL08 patch (1-band), if all null continue
             win = Window(j, i, patch_size, patch_size)
             lab_arr = atl08.read(window=win).astype(np.float32)
+            if lab_arr.ndim != 3: # could be just RH98 lyr or include AGB lyr
+                lab_arr = lab_arr[np.newaxis, ...]
             # look for a close to diagonal lidar track across the patch
-            if not is_lidar_heavy(lab_arr, patch_size, min_valid_lidar_per_batch):
+            if not is_lidar_heavy(lab_arr[0], patch_size, min_valid_lidar_per_batch):
                 continue
             # read corresponding HLS patch
             hls_arr = hls.read(window=win).astype(np.float32)
@@ -209,23 +219,32 @@ def extract_patches_tfrec(
         )
 
 
-def atl08_to_raster(atl08_path, hls_path, out_raster_path, ndval=-9999, rh='h_canopy'):
+def atl08_to_raster(atl08_path, hls_path, out_raster_path,
+                    ndval=-9999, rh='h_canopy', agb=False):
     df = gpd.read_parquet(atl08_path)
     with rasterio.open(hls_path) as hls:
         meta = hls.meta.copy()
         h, w = hls.height, hls.width
-        cols, rows = ~hls.transform * (df.geometry.x.values, df.geometry.y.values)
-        cols = np.floor(cols).astype(int)
-        rows = np.floor(rows).astype(int)
-        mask = (rows >= 0) & (cols >= 0) & (rows < hls.height) & (cols < hls.width)
+        rows, cols = rasterio.transform.rowcol(
+            hls.transform,
+            df.geometry.x.values,
+            df.geometry.y.values
+        )
+        mask = (rows >= 0) & (cols >= 0) & (rows < h) & (cols < w)
         rows, cols = rows[mask], cols[mask]
-        rh98 = df[rh].values[mask]
 
-    out = np.full((h, w), ndval, dtype=np.float32)
-    out[rows, cols] = rh98 / Consts.MAX_HEIGHT
-    meta.update({"count": 1, "nodata": ndval, "dtype": "float32"})
+    nlyrs = 2 if agb else 1
+    out = np.full((nlyrs, h, w), ndval, dtype=np.float32)
+    out[0, rows, cols] = df[rh].values[mask] / Consts.MAX_HEIGHT
+    if agb:
+        out[1, rows, cols] = df['AGB'].values[mask] / Consts.MAX_AGB
+    meta.update({"count": nlyrs, "nodata": ndval, "dtype": "float32"})
+
     with rasterio.open(out_raster_path, "w", **meta) as o:
-        o.write(out, 1)
+        o.write(out)
+        o.descriptions = (rh, 'AGB') if agb else (rh,)
+        o.scales = (Consts.MAX_HEIGHT, Consts.MAX_AGB) if agb else (Consts.MAX_HEIGHT,)
+        o.offsets = (0.0, 0.0) if agb else (0.0, )
 
 
 def get_extent(ds):
@@ -316,7 +335,8 @@ def create_fire_mask(fire_path, hls_path, year):
     return out_path
 
 def create_training_dataset(
-    tile_num, year, atl08_path, hls_path, topo_path, patch_size=128, overlap=32, rh='h_canopy', fire_path=''
+    tile_num, year, atl08_path, hls_path, topo_path, patch_size=128,
+    overlap=32, rh='h_canopy', fire_path='', agb=True
 ):
 
     if fire_path:
@@ -329,10 +349,19 @@ def create_training_dataset(
 
     print("rasterizing atl08 to HLS grid")
     atl08_raster_path = str(Path(atl08_path).with_suffix(".tif"))
-    atl08_to_raster(atl08_path, hls_path, atl08_raster_path, rh=rh)
-
-    hls_path = normalize_stack(hls_path, hls_path.replace('.tif', '_norm.tif'), Consts.HLS_BANDS, mask_path=mask_path)
-    topo_path = normalize_stack(topo_path, topo_path.replace('.tif', '_norm.tif'), Consts.TOPO_BANDS, mask_path=mask_path)
+    atl08_to_raster(atl08_path, hls_path, atl08_raster_path, rh=rh, agb=agb)
+    hls_path = normalize_bands(
+        hls_path,
+        hls_path.replace('.tif', '_norm.tif'),
+        Consts.HLS_BANDS,
+        ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'nbr']
+    )
+    topo_path = normalize_bands(
+        topo_path,
+        topo_path.replace('.tif', '_norm.tif'),
+        Consts.TOPO_BANDS,
+        ['slope', 'tsri']
+    )
 
     print(f"Extracting patches for tile-year: {tile_num}-{year}")
     extract_patches_tfrec(
@@ -358,7 +387,8 @@ if __name__ == "__main__":
     parse.add_argument("--atl08_path", help="atl08 parquet file", required=True)
     parse.add_argument("--patch_size", help="training image patch size", type=int, default=128)
     parse.add_argument("--overlap", help="overlap between training patches", type=int, default=32)
-    parse.add_argument("--rh", help="RH metric to use as learning target (Y in f^(X) = Y)", default='h_canopy')
+    parse.add_argument("--rh", help="RH metric to include in tfrecords", default='h_canopy')
+
     args = parse.parse_args()
 
     create_training_dataset(**vars(args))
