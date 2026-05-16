@@ -19,6 +19,10 @@ inputs:
     description: atl08 file url
     name: atl08_fn_url
     required: true
+  - default: ''
+    description: Biomass OLS models tarball url
+    name: bio_models_fn_url
+    required: true
   positional:
   - default: ''
     description: boreal tile number to run
@@ -52,6 +56,10 @@ inputs:
   - default: ''
     description: RH metric to use as learning target
     name: rh
+    required: true
+  - default: ''
+    description: Biomass OLS models tarball
+    name: bio_models_fn
     required: true
   - default: ''
     description: fire geopackage path in case a fire mask is to be applied

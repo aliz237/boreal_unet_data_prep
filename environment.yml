@@ -1,15 +1,20 @@
 name: data_prep
 channels:
     - conda-forge
+    - nodefaults
 dependencies:
-    - python=3.12.7
-    - pip=24.3.1
-    - gdal=3.9.3
-    - numpy=1.26.4
-    - pandas=2.3.2
-    - geopandas=1.0.1
-    - pyarrow=17.0.0
-    - rasterio=1.4.2
-    - s3fs=2024.10.0
+    - r-base=4.5
+    - r-dplyr=1
+    - r-sf=1
+    - r-optparse=1
+    - r-stringr=1
+    - libgdal-arrow-parquet=3.12
+    - python=3.12
+    - gdal=3.12
+    - pandas=3
+    - geopandas=1
+    - pyarrow=23
+    - rasterio=1.5
+    - s3fs=2026.4
     - pip:
-        - tensorflow==2.17.0
+        - tensorflow[and-cuda]==2.17.0
