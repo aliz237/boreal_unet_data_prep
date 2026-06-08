@@ -34,7 +34,8 @@ def masked_mae_loss(mask_value=-9999):
     return loss
 
 def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path,
-                   patch_size=128, step_size=100, ndval=-9999, batch_size=64, agb=False):
+                   patch_size=128, step_size=100, ndval=-9999, batch_size=64, agb=False,
+                   max_na_block=3, nodata_thresh=0.05):
     batch = []
     ulxy = []
     hls_path = normalize_bands(
@@ -78,7 +79,7 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path,
                     continue
                 
                 # fill NA
-                if not gapfill(hls_arr):
+                if not gapfill(hls_arr, max_na_block, nodata_thresh):
                     hls_patches_dropped += 1
                     continue
                 # same for topo
@@ -86,7 +87,7 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path,
                 topo_arr[topo_arr == ndval] = np.nan
                 if np.any(np.isnan(topo_arr).all(axis=(1,2))):
                     continue
-                if not gapfill(topo_arr):
+                if not gapfill(topo_arr, max_na_block, nodata_thresh):
                     topo_patches_dropped += 1
                     continue
 
