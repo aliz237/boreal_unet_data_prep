@@ -75,7 +75,6 @@ def gapfill(arr, max_na_block=3, nodata_thresh=0.05):
     # 2 or 4 are too small
     filter_size = 8
     bands = list(range(arr.shape[0])) # fill all bands
-    na_blocks = 0
     # if over 5% of the Blue band is NaN, drop the patch
     ndfrac = np.isnan(arr[0]).sum() / arr[0].size
     if ndfrac > nodata_thresh:
@@ -83,6 +82,7 @@ def gapfill(arr, max_na_block=3, nodata_thresh=0.05):
         return False
 
     for band in bands:
+        na_blocks_band = 0
         patch_median = np.nanmedian(arr[band])
         # first try block filling
         for j in range(0, patch_size, filter_size):
@@ -92,15 +92,16 @@ def gapfill(arr, max_na_block=3, nodata_thresh=0.05):
                 if not np.isnan(fill_val):
                     win[np.isnan(win)] = fill_val
                 else:
-                    na_blocks += 1
+                    na_blocks_band += 1
 
         # fill the rest with patch-wide median
         na_mask = np.isnan(arr[band])
         if np.any(na_mask):
             arr[band][na_mask] = patch_median
         # threshold too many NA blocks
-        if na_blocks > max_na_block:
-            logger.info(f'Gapfill: Dropping low quality patch, na_blocks: {na_blocks}')
+
+        if na_blocks_band > max_na_block:
+            logger.info(f'Gapfill: Dropping low quality patch, na_blocks: {na_blocks_band}')
             return False
 
     return True
