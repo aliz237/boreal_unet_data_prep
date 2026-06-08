@@ -1,8 +1,9 @@
 import subprocess
 from pathlib import Path
 import argparse
-import numpy as np
+import logging
 
+import numpy as np
 from osgeo import gdal
 import rasterio
 from rasterio.windows import Window
@@ -10,7 +11,13 @@ from rasterio.windows import Window
 import tensorflow as tf
 from keras.models import load_model
 
-from data_prep import gapfill, align_if_needed, normalize_stack, Consts
+from data_prep import gapfill, align_if_needed, normalize_bands, Consts
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+logger.info(f"Devices: {tf.config.list_physical_devices()}")
+
 
 def masked_mse_loss(mask_value=-9999):
     def loss(y_true, y_pred):
@@ -26,12 +33,22 @@ def masked_mae_loss(mask_value=-9999):
         return tf.reduce_sum(abs_error) / (tf.reduce_sum(mask) + 1e-6)
     return loss
 
-def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, patch_size=128, step_size=100, ndval=-9999, batch_size=64):
+def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path,
+                   patch_size=128, step_size=100, ndval=-9999, batch_size=64, agb=False):
     batch = []
     ulxy = []
-
-    hls_path = normalize_stack(hls_path, hls_path.replace('.tif', '_norm.tif'), Consts.HLS_BANDS)
-    topo_path = normalize_stack(topo_path, topo_path.replace('.tif', '_norm.tif'), Consts.TOPO_BANDS)
+    hls_path = normalize_bands(
+        hls_path,
+        hls_path.replace('.tif', '_norm.tif'),
+        Consts.HLS_BANDS,
+        ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'nbr']
+    )
+    topo_path = normalize_bands(
+        topo_path,
+        topo_path.replace('.tif', '_norm.tif'),
+        Consts.TOPO_BANDS,
+        ['slope', 'tsri']
+    )
 
     hls_path, topo_path, lc_path = align_if_needed(hls_path, topo_path, lc_path)
     topo = rasterio.open(topo_path)
@@ -41,7 +58,8 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, pa
     ax = np.clip(np.minimum(np.linspace(0, 1, patch_size), np.linspace(1, 0, patch_size)) * 5, 0.01, 1)
     kernel = np.outer(ax, ax)
     model = load_model(model_path, custom_objects={'loss': masked_mae_loss})
-
+    scalar = Consts.MAX_AGB if agb else Consts.MAX_HEIGHT
+    logger.info(f'agb:{agb}, scalar:{scalar}')
     with rasterio.open(hls_path) as hls:
         w, h, c = hls.width, hls.height, hls.count
         out_arr = np.full((h, w), 0, dtype=np.float32)
@@ -77,7 +95,7 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, pa
                 ulxy.append((j, i))
 
                 if len(batch) > batch_size:
-                    preds = model.predict(np.array(batch)) * Consts.MAX_HEIGHT
+                    preds = model.predict(np.array(batch)) * scalar
                     for (x, y), pred in zip(ulxy, preds):
                         out_arr[y:y+patch_size, x:x+patch_size] += pred[:,:,0] * kernel
                         count_arr[y:y+patch_size, x:x+patch_size] += kernel
@@ -85,7 +103,7 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, pa
                     ulxy = []
     
     if batch:
-        preds = model.predict(np.array(batch)) * Consts.MAX_HEIGHT
+        preds = model.predict(np.array(batch)) * scalar
         for (x, y), pred in zip(ulxy, preds):
             out_arr[y:y+patch_size, x:x+patch_size] += pred[:,:,0] * kernel
             count_arr[y:y+patch_size, x:x+patch_size] += kernel
@@ -100,8 +118,8 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, pa
         lc_arr = lc.read(1)
         out_arr[np.isin(lc_arr, [0, 50, 60, 70, 80, 200])] = ndval
 
-    print(f'min={np.min(out_arr)}, min={np.min(out_arr[out_arr != ndval])}')
-    print(f"""{hls_patches_dropped} hls_patches_dropped,
+    logger.info(f'min={np.min(out_arr)}, min={np.min(out_arr[out_arr != ndval])}')
+    logger.info(f"""{hls_patches_dropped} hls_patches_dropped,
     {topo_patches_dropped} topo_patches_dropped"""
     )
     meta.update({'count': 1, 'nodata': ndval, 'dtype': 'float32'})
@@ -124,9 +142,11 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path, pa
             "BLOCKSIZE=512"
         ]
     )
-    Path(tmp_tif).unlink(missing_ok=True)
-
     topo.close()
+    Path(tmp_tif).unlink(missing_ok=True)
+    Path(hls_path).unlink(missing_ok=True)
+    Path(topo_path).unlink(missing_ok=True)
+
 
 if __name__ == "__main__":
     parse = argparse.ArgumentParser(
@@ -143,5 +163,8 @@ if __name__ == "__main__":
     parse.add_argument("--step_size", help="step size for sliding the window of size patch_size over the input rasters", type=int, default=100)
     parse.add_argument("--ndval", help="nodata value", type=int, default=-9999)
     parse.add_argument("--batch_size", help="batch size of image patches passed to model.predict", type=int, default=64)
+    parse.add_argument("--agb", help="if true predict agb, o.w predict canopy height", action='store_true')
+
     args = parse.parse_args()
+    logger.info(args)
     predict_raster(**vars(args))

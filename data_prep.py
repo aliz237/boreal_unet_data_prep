@@ -1,16 +1,19 @@
 from pathlib import Path
-import subprocess
 import argparse
+import logging
 
 import numpy as np
 import geopandas as gpd
-import pandas as pd
-
 from osgeo import gdal
 import rasterio
 from rasterio.windows import Window
-
 import tensorflow as tf
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 
 class Consts:
     HLS_BANDS = {
@@ -66,14 +69,18 @@ def is_lidar_heavy(atl08_arr, patch_size, min_valid_lidar_per_batch, nodata=-999
     # filtering out the low quality atl08 patches
     return np.sum(atl08_arr != nodata) > min_valid_lidar_per_batch
 
-def gapfill(arr, nodata_thresh=0.6):
+def gapfill(arr, max_na_block=3, nodata_thresh=0.05):
     patch_size = arr.shape[1]
     # divides patch sizes 128, 64, 32 and is large enough 
     # 2 or 4 are too small
     filter_size = 8
     bands = list(range(arr.shape[0])) # fill all bands
     na_blocks = 0
-    na_blocks_thresh = int(nodata_thresh * patch_size**2 / filter_size**2)
+    # if over 5% of the Blue band is NaN, drop the patch
+    ndfrac = np.isnan(arr[0]).sum() / arr[0].size
+    if ndfrac > nodata_thresh:
+        logger.info(f'Gapfill: Dropping low quality patch, ndfrac: {ndfrac}')
+        return False
 
     for band in bands:
         patch_median = np.nanmedian(arr[band])
@@ -92,8 +99,10 @@ def gapfill(arr, nodata_thresh=0.6):
         if np.any(na_mask):
             arr[band][na_mask] = patch_median
         # threshold too many NA blocks
-        if na_blocks > na_blocks_thresh:
+        if na_blocks > max_na_block:
+            logger.info(f'Gapfill: Dropping low quality patch, na_blocks: {na_blocks}')
             return False
+
     return True
 
 def normalize_bands(in_raster_path, out_raster_path, band_defs, band_names, mask_path=None):
@@ -161,6 +170,7 @@ def extract_patches_tfrec(
                 lab_arr = lab_arr[np.newaxis, ...]
             # look for a close to diagonal lidar track across the patch
             if not is_lidar_heavy(lab_arr[0], patch_size, min_valid_lidar_per_batch):
+                logger.debug("sparse lidar covergae, dropping patch")
                 continue
             # read corresponding HLS patch
             hls_arr = hls.read(window=win).astype(np.float32)
@@ -169,9 +179,11 @@ def extract_patches_tfrec(
             if np.any(
                 np.isnan(hls_arr).sum(axis=(1, 2)) >= ndval_thresh * patch_size**2
             ):
+                logger.info("sparse HLS covergae, dropping patch")
                 continue
             # fill NA
             if not gapfill(hls_arr):
+                logger.info("Not gapfilling HLS, dropping patch")
                 hls_patches_dropped += 1
                 continue
             # same for topo
@@ -180,6 +192,7 @@ def extract_patches_tfrec(
             if np.any(
                 np.isnan(topo_arr).sum(axis=(1, 2)) >= ndval_thresh * patch_size**2
             ):
+                logger.info("sparse TOPO covergae, dropping patch")
                 continue
             # fill NA
             if not gapfill(topo_arr):
@@ -196,7 +209,7 @@ def extract_patches_tfrec(
             ser = serialize_image_patch(arr, patch_size, patch_depth)
             tfw.write(ser.numpy())
             if n % 100 == 0:
-                print(f"wrote {n} records, of total {int(h*w/patch_size**2)}")
+                logger.info(f"wrote {n} records, of total {int(h*w/patch_size**2)}")
 
     tfw.close()
     hls.close()
@@ -264,12 +277,14 @@ def align_if_needed(hls_path, topo_path, lc_path):
     ds1 = gdal.Open(hls_path)
     ds2 = gdal.Open(topo_path)
     ds3 = gdal.Open(lc_path)
-    unique_dims = len(list(set([ds1.RasterXSize, ds2.RasterXSize, ds3.RasterXSize,
-                 ds1.RasterYSize, ds2.RasterYSize, ds3.RasterYSize])))
+    dims = [ds1.RasterXSize, ds2.RasterXSize, ds3.RasterXSize,
+            ds1.RasterYSize, ds2.RasterYSize, ds3.RasterYSize]
+    unique_dims = len(list(set(dims)))
     if unique_dims != 1:
         ext1 = get_extent(ds1)
         ext2 = get_extent(ds2)
         ext3 = get_extent(ds3)
+        logger.info('HLS, TOPO, and LC dims dont match: {dims}, resampling to common grid.')
 
         intersection = [
             max(ext1[0], ext2[0], ext3[0]),
@@ -294,7 +309,7 @@ def align_if_needed(hls_path, topo_path, lc_path):
         gdal.Warp(lc_path, ds3, resampleAlg='near', srcNodata=0, dstNodata=0, **options_dict)
 
         ds1 = ds2 = ds3 = None
-        print(f"Calculated Intersection: {intersection}")
+        logger.info(f"Calculated Intersection: {intersection}")
 
     return Path(hls_path), Path(topo_path), Path(lc_path)
 
@@ -313,15 +328,22 @@ def create_fire_mask(fire_path, hls_path, year):
     bounds = reference_bounds(hls_path)
     f_df = gpd.read_file(fire_path)
     f_df = f_df[f_df.atl08_years.str.contains(str(year))]
+
     if f_df.shape[0] == 0:
         return None
-    local_fire_path = Path('input')/Path(fire_path).name
-    out_path = local_fire_path.with_suffix('.tif')
-    f_df.to_file(str(local_fire_path))
+
+    if fire_path.startswith('s3'):
+        # save locally to DPS input dir so gdal rasterize works
+        local_fire_path = Path('input')/Path(fire_path).name
+        out_path = local_fire_path.with_suffix('.tif')
+        f_df.to_file(str(local_fire_path))
+        fire_path = local_fire_path
+    else:
+        out_path = Path(fire_path).with_suffix('.tif')
 
     ds = gdal.Rasterize(
         str(out_path),
-        str(local_fire_path),
+        str(fire_path),
         format="GTiff",
         initValues=0,
         burnValues=[1],
@@ -336,7 +358,7 @@ def create_fire_mask(fire_path, hls_path, year):
 
 def create_training_dataset(
     tile_num, year, atl08_path, hls_path, topo_path, patch_size=128,
-    overlap=32, rh='h_canopy', fire_path='', agb=True
+    overlap=32, rh='h_canopy', fire_path='', agb=True, out_dir='output'
 ):
 
     if fire_path:
@@ -349,29 +371,37 @@ def create_training_dataset(
 
     print("rasterizing atl08 to HLS grid")
     atl08_raster_path = str(Path(atl08_path).with_suffix(".tif"))
-    atl08_to_raster(atl08_path, hls_path, atl08_raster_path, rh=rh, agb=agb)
-    hls_path = normalize_bands(
-        hls_path,
-        hls_path.replace('.tif', '_norm.tif'),
-        Consts.HLS_BANDS,
-        ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'nbr']
-    )
-    topo_path = normalize_bands(
-        topo_path,
-        topo_path.replace('.tif', '_norm.tif'),
-        Consts.TOPO_BANDS,
-        ['slope', 'tsri']
-    )
+    try:
+        atl08_to_raster(atl08_path, hls_path, atl08_raster_path, rh=rh, agb=agb)
+        hls_path = normalize_bands(
+            hls_path,
+            hls_path.replace('.tif', '_norm.tif'),
+            Consts.HLS_BANDS,
+            ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'nbr']
+        )
+        topo_path = normalize_bands(
+            topo_path,
+            topo_path.replace('.tif', '_norm.tif'),
+            Consts.TOPO_BANDS,
+            ['slope', 'tsri']
+        )
 
-    print(f"Extracting patches for tile-year: {tile_num}-{year}")
-    extract_patches_tfrec(
-        hls_path,
-        atl08_raster_path,
-        topo_path,
-        tfrecord_path=f"output/{tile_num}_{year}_{patch_size}_{overlap}.tfrecord.gz",
-        patch_size=patch_size,
-        overlap=overlap
-    )
+        print(f"Extracting patches for tile-year: {tile_num}-{year}")
+        extract_patches_tfrec(
+            hls_path,
+            atl08_raster_path,
+            topo_path,
+            tfrecord_path=f"{out_dir}/{tile_num}_{year}_{patch_size}_{overlap}.tfrecord.gz",
+            patch_size=patch_size,
+            overlap=overlap
+        )
+    except Exception as e:
+        print(e)
+    finally:
+        Path(topo_path).unlink(missing_ok=True)
+        Path(hls_path).unlink(missing_ok=True)
+        Path(atl08_raster_path).unlink(missing_ok=True)
+
 
 if __name__ == "__main__":
     parse = argparse.ArgumentParser(
@@ -388,6 +418,8 @@ if __name__ == "__main__":
     parse.add_argument("--patch_size", help="training image patch size", type=int, default=128)
     parse.add_argument("--overlap", help="overlap between training patches", type=int, default=32)
     parse.add_argument("--rh", help="RH metric to include in tfrecords", default='h_canopy')
+    parse.add_argument("--out_dir", help="output directory name", default='output')
+    parse.add_argument("--agb", help="Pass to include AGB layer in output tfrecords", action='store_true', default=True)
 
     args = parse.parse_args()
 
