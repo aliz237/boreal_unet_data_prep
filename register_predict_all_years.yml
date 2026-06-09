@@ -1,0 +1,83 @@
+algorithm_description: Predicts a vegetation height raster given a model, HLS and topo
+algorithm_name: boreal_unet_predict
+algorithm_version: dev
+build_command: boreal_unet_data_prep/build-env.sh
+disk_space: 80GB
+docker_container_url: mas.maap-project.org/root/maap-workspaces/custom_images/maap_base:v4.3.0
+inputs:
+  config: []
+  file:
+  - default: ''
+    description: topo file url
+    name: topo_fn_url
+    required: true
+  - default: ''
+    description: landcover file url
+    name: lc_fn_url
+    required: true
+  - default: ''
+    description: model.keras file url
+    name: model_fn_url
+    required: true
+  positional:
+  - default: ''
+    description: tile number
+    name: tile_num
+    required: true  
+  - default: ''
+    description: HLS tindex path
+    name: hls_tindex
+    required: true
+  - default: ''
+    description: topo file
+    name: topo_fn
+    required: true
+  - default: ''
+    description: land cover file
+    name: lc_fn
+    required: true
+  - default: ''
+    description: model file
+    name: model_fn
+    required: true
+  - default: ''
+    description: output directory (DPS default = output) 
+    name: output_dir
+    required: false
+  - default: ''
+    description: input directory (DPS default = input) 
+    name: input_dir
+    required: false
+  - default: ''
+    description: training image patch size (e.g 128)
+    name: patch_size
+    required: false
+  - default: ''
+    description: sliding window step size (e.g 100)
+    name: step_size
+    required: false
+  - default: ''
+    description: nodata value
+    name: ndval
+    required: false
+  - default: ''
+    description: predicting batches batch size (e.g 64)
+    name: batch_size
+    required: false
+  - default: ''
+    description: max number of NA blocks allowed in a patch
+    name: max_na_block
+    required: false
+  - default: ''
+    description: max nodata fraction allowed in a patch
+    name: nodata_thresh
+    required: false
+  - default: ''
+    description: predict agb if true 
+    name: agb
+    required: false
+
+
+queue: maap-dps-worker-8gb
+repository_url: https://github.com/aliz237/boreal_unet_data_prep
+run_command: boreal_unet_data_prep/run-predict-all-years.sh
