@@ -34,7 +34,7 @@ fi
 
 
 CMD=(
-  conda run --live-stream --name data_prep2 python "${basedir}/predict_all_years.py"
+  conda run --live-stream --name predict_env python "${basedir}/predict_all_years.py"
   --hls_tindex "$HLS_TINDEX"
   --tile_num "$TILE_NUM"
   --topo_path "$TOPO_PATH"

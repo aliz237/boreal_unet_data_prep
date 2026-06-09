@@ -1,7 +1,7 @@
-algorithm_description: Predicts a vegetation height raster given a model, HLS and topo
+algorithm_description: Predicts Height or AGB for all years given a model, HLS tindex, topo and land cover inputs
 algorithm_name: boreal_unet_predict
 algorithm_version: dev
-build_command: boreal_unet_data_prep/build-env.sh
+build_command: boreal_unet_data_prep/build-env-predict.sh
 disk_space: 80GB
 docker_container_url: mas.maap-project.org/root/maap-workspaces/custom_images/maap_base:v4.3.0
 inputs:
@@ -80,4 +80,4 @@ inputs:
 
 queue: maap-dps-worker-8gb
 repository_url: https://github.com/aliz237/boreal_unet_data_prep
-run_command: boreal_unet_data_prep/run-predict-all-years.sh
+run_command: boreal_unet_data_prep/run-predict-all-years-dps.sh

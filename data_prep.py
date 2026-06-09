@@ -77,7 +77,6 @@ def gapfill(arr, max_na_block=3, nodata_thresh=0.05):
     bands = list(range(arr.shape[0])) # fill all bands
     # if over 5% of the Blue band is NaN, drop the patch
     ndfrac = np.isnan(arr[0]).sum() / arr[0].size
-    logger.info(f'Gapfill, ndfrac: {ndfrac}')
     if ndfrac > nodata_thresh:
         logger.info(f'Gapfill: Dropping low quality patch, ndfrac: {ndfrac}')
         return False
@@ -104,7 +103,6 @@ def gapfill(arr, max_na_block=3, nodata_thresh=0.05):
             logger.info(f'Gapfill: Dropping low quality patch, na_blocks: {na_blocks_band}')
             return False
 
-    logger.info(f'Gapfill, na_blocks: {na_blocks_band}')
     return True
 
 def normalize_bands(in_raster_path, out_raster_path, band_defs, band_names, mask_path=None):
