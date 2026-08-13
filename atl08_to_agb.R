@@ -180,8 +180,9 @@ ICESat2_AGB_RH <- function(
     gdf <- reformat_for_AGB_modeling(gdf, offset)
     gdf <- remove_height_outliers(gdf)
     cat('Shape after removing height outliers:', nrow(gdf), '\n')
-
-    gdf <- gdf |> filter(if_all(-geometry, ~ !is.na(.x) & .x != -9999))
+    if (nrow(gdf) > 0){
+      gdf <- gdf |> filter(if_all(-geometry, ~ !is.na(.x) & .x != -9999))
+    }
     cat('Shape after removing NAs:', dim(gdf), '\n')
     str(gdf)
 
@@ -194,7 +195,6 @@ ICESat2_AGB_RH <- function(
 
 get_biomass_models <- function(biomass_models_path){
     base_dir <- dirname(biomass_models_path)
-    untar(biomass_models_path, exdir=base_dir)
     biomass_model_fns <- list.files(path=base_dir, pattern='*.rds', full.names=TRUE)
     biomass_models <- lapply(biomass_model_fns, readRDS)
     names(biomass_models) <- paste0("m",1:length(biomass_models))

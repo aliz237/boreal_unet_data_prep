@@ -1,6 +1,7 @@
 from pathlib import Path
 import argparse
 import logging
+import subprocess
 
 import numpy as np
 import pandas as pd
@@ -216,16 +217,20 @@ def extract_patches_tfrec(
                                  tp_arr.shape,
                                  a1_arr.shape, a2_arr.shape,
                                  arr1.shape, arr2.shape, arr.shape))
-                    # serialize the arr to write as a tfrecord
+
                     ser = serialize_image_patch(arr, patch_size, patch_depth)
                     tfw.write(ser.numpy())
+
                     if n % 100 == 0:
                         logger.info(f"wrote {n} records")
+
+            logger.info(f"wrote {n} records")
     tfw.close()
-    if len(all_dims) == 1:
-        logger.info(f'Shapes: {all_dims}')
-    else:
-        logger.info(f'shape mismatch ...')
+    if len(all_dims) != 1:
+        logger.info('shape mismatch ...')
+
+    logger.info(f'Shapes: {all_dims}')
+
 
     if n == 0:
         logger.info(f"No patches extracted from {hls_paths[t1]}!")
@@ -240,36 +245,83 @@ def extract_patches_tfrec(
         logger.info(f'{n} records saved')
 
 
-def atl08_to_raster(atl08_path, hls_path, out_raster_path,
+def atl08_to_raster(atl08_path, hls_path, out_raster_path, tile_num,
                     ndval=-9999, rh='h_canopy', agb=False):
+
     logger.info(f'out_raster_path:{out_raster_path}')
     logger.info(f'hls_path: {hls_path}')
-    df = gpd.read_parquet(atl08_path)
+
+    df = None
+    atl08_agb_path = None
+
+    try:
+        if agb:
+            atl08_path = Path(atl08_path)
+            atl08_agb_path = Path('/tmp') / (atl08_path.stem + '_agb' + atl08_path.suffix)
+            bio_models_path = Path('~/Download/bio_models/bio_models_noground.tar').expanduser()
+
+            cmd = ['conda', 'run', '--live-stream',
+                   '--name', 'data_prep2',
+                   'Rscript', 'atl08_to_agb.R',
+                   '-a', str(atl08_path).replace('s3:/', '/vsis3/'),
+                   '-b', str(bio_models_path),
+                   '-o', str(atl08_agb_path)
+                  ]
+
+            subprocess.run(cmd, stderr=subprocess.STDOUT, check=True)
+
+            df = gpd.read_parquet(atl08_agb_path)
+        else:
+            df = gpd.read_parquet(atl08_path)
+
+    except Exception as e:
+        logger.warning(f"Failed to read parquet file ({e}). Will output an empty NoData raster.")
+
+    has_data = df is not None and not df.empty
+
+    # Always open HLS to get the dimensions and metadata for the output raster
     with rasterio.open(hls_path) as hls:
         meta = hls.meta.copy()
         h, w = hls.height, hls.width
-        logger.info(f'h:{h}, w:{w}')
-        rows, cols = rasterio.transform.rowcol(
-            hls.transform,
-            df.geometry.x.values,
-            df.geometry.y.values
-        )
-        mask = (rows >= 0) & (cols >= 0) & (rows < h) & (cols < w)
-        rows, cols = rows[mask], cols[mask]
+        logger.info(f'HLS raster height:{h}, width:{w}')
+
+        # Only attempt to calculate coordinates if we have a valid, populated dataframe
+        if has_data:
+            rows, cols = rasterio.transform.rowcol(
+                hls.transform,
+                df.geometry.x.values,
+                df.geometry.y.values
+            )
+            mask = (rows >= 0) & (cols >= 0) & (rows < h) & (cols < w)
+            valid_rows, valid_cols = rows[mask], cols[mask]
+        else:
+            logger.info("Dataframe is empty or failed to load. Skipping point mapping.")
+            mask = np.array([]) # empty mask
 
     nlyrs = 2 if agb else 1
+    # Initialize the entire array with ndval
     out = np.full((nlyrs, h, w), ndval, dtype=np.float32)
-    out[0, rows, cols] = df[rh].values[mask] / Consts.MAX_HEIGHT
-    if agb:
-        out[1, rows, cols] = df['AGB'].values[mask] / Consts.MAX_AGB
+
+    # Map values only if we actually found valid data
+    if has_data:
+        out[0, valid_rows, valid_cols] = df[rh].values[mask] / Consts.MAX_HEIGHT
+        if agb:
+            out[1, valid_rows, valid_cols] = df['AGB'].values[mask] / Consts.MAX_AGB
+
     meta.update({"count": nlyrs, "nodata": ndval, "dtype": "float32"})
-    logger.info(out[out!=ndval][:5])
+
+    if df is not None and not df.empty:
+        logger.info(out[out != ndval][:5])
+
     with rasterio.open(out_raster_path, "w", **meta) as o:
         o.write(out)
         o.descriptions = (rh, 'AGB') if agb else (rh,)
         o.scales = (Consts.MAX_HEIGHT, Consts.MAX_AGB) if agb else (Consts.MAX_HEIGHT,)
         o.offsets = (0.0, 0.0) if agb else (0.0, )
         logger.info(f'wrote {out_raster_path}')
+
+    if agb and atl08_agb_path and atl08_agb_path.exists():
+        atl08_agb_path.unlink()
 
 
 def get_extent(ds):
@@ -388,46 +440,55 @@ def create_training_dataset(
     logger.info(f'atl08_paths:{atl08_paths}, hls_paths:{hls_paths}, topo_path:{topo_path}')
     hls_norm_paths = dict()
     atl08_raster_paths = dict()
-    logger.info("Normalizing topo")
-    topo_norm_path = normalize_bands(
-        topo_path,
-        str(Path('/tmp')/(Path(topo_path).stem + '_norm.tif')),
-        Consts.TOPO_BANDS,
-        ['slope', 'tsri']
-    )
-    for year in atl08_paths.keys():
-        atl08_raster_paths[year] = str(Path('/tmp')/(Path(atl08_paths[year]).stem + '_norm.tif'))
-        logger.info(f"rasterizing atl08 {year} to HLS grid")
-        atl08_to_raster(
-            atl08_paths[year],
-            hls_paths[year],
-            atl08_raster_paths[year],
-            rh=rh,
-            agb=agb
+    topo_norm_path = None
+
+    try:
+        logger.info("Normalizing topo")
+        topo_norm_path = normalize_bands(
+            topo_path,
+            str(Path('/tmp')/(Path(topo_path).stem + '_norm.tif')),
+            Consts.TOPO_BANDS,
+            ['slope', 'tsri']
         )
-        logger.info(f"Normalizing HLS {year}")
-        hls_norm_paths[year] = normalize_bands(
-            hls_paths[year],
-            str(Path('/tmp')/(Path(hls_paths[year]).stem + '_norm.tif')),
-            Consts.HLS_BANDS,
-            ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'nbr']
-        )
+        for year in sorted(atl08_paths.keys()):
+            atl08_raster_paths[year] = str(Path('/tmp')/(Path(atl08_paths[year]).stem + '_norm.tif'))
+            logger.info(f"rasterizing atl08 {year} to HLS grid")
+            atl08_to_raster(
+                atl08_paths[year],
+                hls_paths[year],
+                atl08_raster_paths[year],
+                tile_num=tile_num,
+                rh=rh,
+                agb=agb
+            )
+            logger.info(f"Normalizing HLS {year}")
+            hls_norm_paths[year] = normalize_bands(
+                hls_paths[year],
+                str(Path('/tmp')/(Path(hls_paths[year]).stem + '_norm.tif')),
+                Consts.HLS_BANDS,
+                ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'nbr']
+            )
 
 
-    logger.info(f"Extracting patches for tile: {tile_num}")
-    extract_patches_tfrec(
-        hls_norm_paths,
-        atl08_raster_paths,
-        topo_norm_path,
-        tfrecord_path=Path(f"{out_dir}/{tile_num}_2019_2024_{patch_size}_{overlap}.tfrecord.gz"),
-        patch_size=patch_size,
-        overlap=overlap,
-        ndval_thresh=ndval_thresh
-    )
-    # Path(topo_norm_path).unlink(missing_ok=True)
-    # for year in atl08_paths.keys():
-    #     Path(hls_norm_paths.get(year)).unlink(missing_ok=True)
-    #     Path(atl08_raster_paths.get(year)).unlink(missing_ok=True)
+        logger.info(f"Extracting patches for tile: {tile_num}")
+        extract_patches_tfrec(
+            hls_norm_paths,
+            atl08_raster_paths,
+            topo_norm_path,
+            tfrecord_path=Path(f"{out_dir}/{tile_num}_2019_2024_{patch_size}_{overlap}.tfrecord.gz"),
+            patch_size=patch_size,
+            overlap=overlap,
+            ndval_thresh=ndval_thresh
+        )
+    finally:
+        logger.info('cleaning up temp rasters ...')
+        if topo_norm_path:
+            Path(topo_norm_path).unlink(missing_ok=True)
+        for year in sorted(atl08_paths.keys()):
+            if year in hls_norm_paths:
+                Path(hls_norm_paths[year]).unlink(missing_ok=True)
+            if year in atl08_raster_paths:
+                Path(atl08_raster_paths[year]).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
