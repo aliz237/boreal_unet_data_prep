@@ -157,8 +157,8 @@ def extract_patches_tfrec(
             # patch_depth = 11 # 6 HLS spectral channels, 1 NBR, 1 slope, 1 TSRI, and 2 atl08 label.
             # 120 is median valid pixel count of lidar track in ATL08 128x128 patches
             # the other one is 70% of diagonal of a patch (so close to complete and decent lidar track)
-            for j in range(0, h1.width - patch_size, step_size):
-                for i in range(0, h1.height - patch_size, step_size):
+            for j in range(0, h1.width - patch_size + 1, step_size):
+                for i in range(0, h1.height - patch_size + 1, step_size):
                     # (j, i) is the top-left corner of patch
                     win = Window(j, i, patch_size, patch_size)
 
