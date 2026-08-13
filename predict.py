@@ -18,21 +18,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.info(f"Devices: {tf.config.list_physical_devices()}")
 
-
-def masked_mse_loss(mask_value=-9999):
-    def loss(y_true, y_pred):
-        mask = tf.cast(tf.not_equal(y_true, mask_value), tf.float32)
-        squared_error = tf.square(y_true - y_pred) * mask
-        return tf.reduce_sum(squared_error) / (tf.reduce_sum(mask) + 1e-6)
-    return loss
-
-def masked_mae_loss(mask_value=-9999):
-    def loss(y_true, y_pred):
-        mask = tf.cast(tf.not_equal(y_true, mask_value), tf.float32)
-        abs_error = tf.abs(y_true - y_pred) * mask
-        return tf.reduce_sum(abs_error) / (tf.reduce_sum(mask) + 1e-6)
-    return loss
-
 def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path,
                    patch_size=128, step_size=100, ndval=-9999, batch_size=64, agb=False,
                    max_na_block=3, nodata_thresh=0.05):
@@ -55,10 +40,10 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path,
     topo = rasterio.open(topo_path)
 
     hls_patches_dropped = 0
-    topo_patches_dropped = 0    
+    topo_patches_dropped = 0
     ax = np.clip(np.minimum(np.linspace(0, 1, patch_size), np.linspace(1, 0, patch_size)) * 5, 0.01, 1)
     kernel = np.outer(ax, ax)
-    model = load_model(model_path, custom_objects={'loss': masked_mae_loss})
+    model = load_model(model_path, compile=False)
     scalar = Consts.MAX_AGB if agb else Consts.MAX_HEIGHT
     logger.info(f'agb:{agb}, scalar:{scalar}')
     with rasterio.open(hls_path) as hls:
@@ -96,7 +81,7 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path,
                 ulxy.append((j, i))
 
                 if len(batch) > batch_size:
-                    preds = model.predict(np.array(batch)) * scalar
+                    preds = model.predict(np.array(batch), verbose=0) * scalar
                     for (x, y), pred in zip(ulxy, preds):
                         out_arr[y:y+patch_size, x:x+patch_size] += pred[:,:,0] * kernel
                         count_arr[y:y+patch_size, x:x+patch_size] += kernel
@@ -127,7 +112,8 @@ def predict_raster(hls_path, topo_path, lc_path, out_raster_path, model_path,
     tmp_tif = out_raster_path.replace('.tif', '_temp.tif')
     with rasterio.open(tmp_tif, 'w', **meta) as o:
         o.write(out_arr, 1)
-        o.set_band_description(1, 'Ht')
+        band_name = 'AGB' if agb else 'Ht'
+        o.set_band_description(1, band_name)
     # write tmp_tif as cog
     gdal.Translate(
         out_raster_path,

@@ -14,6 +14,7 @@ def predict_raster_all_years(tile_num, hls_tindex, topo_path, lc_path, model_pat
                              output_dir='output', input_dir='input', patch_size=128,
                              step_size=100, ndval=-9999, batch_size=64, agb=False,
                              nodata_thresh=0.05, max_na_block=3):
+    Y = 'AGB' if agb else 'Ht'
     df = pd.read_csv(hls_tindex)
     s3 = s3fs.S3FileSystem(
         anon=False,
@@ -29,7 +30,7 @@ def predict_raster_all_years(tile_num, hls_tindex, topo_path, lc_path, model_pat
             s3.get_file(item['s3_path'], local_path)
 
             logger.info(f'Running predict for: {local_path}, {item['year']}')
-            out_raster_path = f'{output_dir}/UNet_Ht_m4_{patch_size}_{tile_num}_{item["year"]}.tif'
+            out_raster_path = f'{output_dir}/UNet_{Y}_m4_{patch_size}_{tile_num}_{item["year"]}.tif'
             predict_raster(
                 hls_path=local_path,
                 topo_path=topo_path,
