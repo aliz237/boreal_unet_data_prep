@@ -140,6 +140,7 @@ def extract_patches_tfrec(
     step_size = patch_size - overlap
     n = 0
     min_n = int(min(patch_size * np.sqrt(2) * 0.7, 120))
+    max_na = ndval_thresh * patch_size**2
     tfw = tf.io.TFRecordWriter(
         str(tfrecord_path), options=tf.io.TFRecordOptions(compression_type="GZIP")
     )
@@ -181,11 +182,8 @@ def extract_patches_tfrec(
                     # can't have nulls in HLS, if >= ndval_thresh % is null for any band, continue
                     h1_arr[h1_arr == ndval] = np.nan
                     h2_arr[h2_arr == ndval] = np.nan
-                    if np.any(
-                        np.isnan(h1_arr).sum(axis=(1, 2)) >= ndval_thresh * patch_size**2
-                    ) or np.any(
-                        np.isnan(h2_arr).sum(axis=(1, 2)) >= ndval_thresh * patch_size**2
-                    ):
+                    if (np.any(np.isnan(h1_arr).sum(axis=(1, 2)) >= max_na) or
+                        np.any(np.isnan(h2_arr).sum(axis=(1, 2)) >= max_na)):
                         logger.info("sparse HLS covergae, dropping patch")
                         continue
                     # fill NA
