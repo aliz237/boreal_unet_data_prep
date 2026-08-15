@@ -170,8 +170,6 @@ def extract_patches_tfrec(
                         a1_arr = a1_arr[np.newaxis, ...]
                         a2_arr = a2_arr[np.newaxis, ...]
                     # look for an ~diagonal lidar track across the patch
-                    lh1 = is_lidar_heavy(a1_arr[0], min_n)
-                    lh2 = is_lidar_heavy(a2_arr[0], min_n)
                     if not (is_lidar_heavy(a1_arr[0], min_n) or is_lidar_heavy(a2_arr[0], min_n)):
                         logger.debug("sparse lidar covergae, dropping patch")
                         continue
