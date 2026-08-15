@@ -188,7 +188,6 @@ def extract_patches_tfrec(
                     ):
                         logger.debug('sparse lidar covergae, dropping patch')
                         continue
-                    logger.info(f'{t1}:{lh1}, {t2}:{lh2}')
                     # read corresponding HLS patch
                     h1_arr = h1.read(window=win).astype(np.float32)
                     h2_arr = h2.read(window=win).astype(np.float32)
