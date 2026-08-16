@@ -1,7 +1,7 @@
 algorithm_description: return fire polygons that atl08 post fire intersects
 algorithm_name: boreal_unet_coincident_fire_atl08
 algorithm_version: dev
-build_command: boreal_unet_data_prep/build-env.sh
+build_command: boreal_unet_data_prep/build-env-predict.sh
 disk_space: 80GB
 docker_container_url: mas.maap-project.org/root/maap-workspaces/custom_images/maap_base:v4.3.0
 inputs:
