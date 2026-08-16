@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "boreal-unet-data-prep"
+version = "0.1.0"
+description = "Training-data extraction and inference pipeline for boreal forest canopy height / AGB prediction from HLS, ICESat-2 ATL08, and topography."
+requires-python = ">=3.12"
+
+# Kept deliberately unpinned here: environment.yml / environment-predict.yml are the
+# authoritative version pins (conda-forge channel), since GDAL/rasterio/geopandas need
+# to share one libgdal build across Python *and* R (see atl08_to_agb.R). This list exists
+# so `pip install -e .` documents/resolves the same dependency surface pip-side; it is not
+# meant to replace the conda envs.
+#
+# Not listed: GDAL (`osgeo`) itself. The GDAL Python bindings are only reliably installable
+# via the conda-forge `gdal` package (matched against the same libgdal used by rasterio/R);
+# pip-installing `gdal` standalone outside conda-forge is fragile and unsupported here.
+dependencies = [
+    "numpy",
+    "pandas",
+    "geopandas",
+    "pyarrow",
+    "rasterio",
+    "s3fs",
+]
+
+[project.optional-dependencies]
+# Mirrors environment.yml (conda env: data_prep2), used for training-data extraction.
+train = ["tensorflow[and-cuda]==2.18.0"]
+# Mirrors environment-predict.yml (conda env: predict_env), used for inference and the
+# coincident-fire-atl08 DPS algorithm.
+predict = ["tensorflow==2.18.0"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.setuptools]
+# Flat layout: these are standalone top-level modules, not a package directory, so they
+# must be listed explicitly rather than relying on setuptools' directory-based discovery.
+# The DPS run scripts invoke them directly (e.g. `python data_prep.py`), so this list exists
+# for local dev/test installs (`pip install -e .[dev]`) rather than to change how they run.
+py-modules = [
+    "constants",
+    "tfrecord_utils",
+    "raster_utils",
+    "atl08_utils",
+    "patch_extraction",
+    "data_prep",
+    "predict",
+    "predict_all_years",
+    "coincident_fire_atl08",
+]
+
+[tool.ruff]
+line-length = 90
+target-version = "py312"
+# Scratch/WIP notebooks in this repo aren't meant to be kept ruff-clean.
+extend-exclude = ["*.ipynb"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.ruff.lint]
+# Explicit rather than relying on ruff's ambient default selection, which has grown far
+# broader over ruff releases (as of ruff 0.16 it's not just pyflakes/pycodestyle errors).
+# E4/E7/E9/F is the classic pyflakes + pycodestyle-errors baseline this repo was already
+# formatted against; I is added for import sorting, meaningful now that there's a real
+# internal module graph (constants/raster_utils/atl08_utils/patch_extraction/tfrecord_utils).
+# Broadening this (bugbear, comprehensions, etc.) is a separate lint-policy decision.
+select = ["E4", "E7", "E9", "F", "I"]

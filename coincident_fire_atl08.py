@@ -1,9 +1,10 @@
+import argparse
 from pathlib import Path
 from pprint import pprint
-import argparse
+
 import geopandas as gpd
-from osgeo import gdal
 import s3fs
+from osgeo import gdal
 
 from raster_utils import raster_bounds
 
@@ -11,9 +12,7 @@ from raster_utils import raster_bounds
 def coin(fire_df, atl08_df, atl08_year):
     """Augments fire_df with year of coincident atl08"""
     up = False
-    joined = gpd.sjoin(
-        fire_df, atl08_df[['geometry']], how='left', predicate='contains'
-    )
+    joined = gpd.sjoin(fire_df, atl08_df[['geometry']], how='left', predicate='contains')
     fires_with_atl08 = joined[~joined.index_right.isna()].index.unique()
     for i in fires_with_atl08:
         up = True

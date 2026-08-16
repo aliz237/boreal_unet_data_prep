@@ -1,9 +1,9 @@
-from pathlib import Path
 import logging
 import subprocess
+from pathlib import Path
 
-import numpy as np
 import geopandas as gpd
+import numpy as np
 import rasterio
 from osgeo import gdal
 
@@ -32,9 +32,7 @@ def atl08_to_raster(
     try:
         if agb:
             atl08_path = Path(atl08_path)
-            atl08_agb_path = Path('/tmp') / (
-                atl08_path.stem + '_agb' + atl08_path.suffix
-            )
+            atl08_agb_path = Path('/tmp') / (atl08_path.stem + '_agb' + atl08_path.suffix)
             bio_models_path = Path(
                 '~/Download/bio_models/bio_models_noground.tar'
             ).expanduser()

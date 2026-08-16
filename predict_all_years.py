@@ -1,8 +1,10 @@
-from pathlib import Path
-import logging
 import argparse
-import s3fs
+import logging
+from pathlib import Path
+
 import pandas as pd
+import s3fs
+
 from predict import predict_raster
 
 logging.basicConfig(

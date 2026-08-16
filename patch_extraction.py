@@ -2,8 +2,8 @@ import logging
 
 import numpy as np
 import rasterio
-from rasterio.windows import Window
 import tensorflow as tf
+from rasterio.windows import Window
 
 from raster_utils import gapfill, is_lidar_heavy
 from tfrecord_utils import serialize_image_patch
@@ -80,8 +80,7 @@ def extract_patches_tfrec(
                     tp_arr = tp.read(window=win).astype(np.float32)
                     tp_arr[tp_arr == ndval] = np.nan
                     if np.any(
-                        np.isnan(tp_arr).sum(axis=(1, 2))
-                        >= ndval_thresh * patch_size**2
+                        np.isnan(tp_arr).sum(axis=(1, 2)) >= ndval_thresh * patch_size**2
                     ):
                         logger.info('sparse TOPO covergae, dropping patch')
                         continue

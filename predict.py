@@ -1,14 +1,13 @@
-from pathlib import Path
 import argparse
 import logging
+from pathlib import Path
 
 import numpy as np
-from osgeo import gdal
 import rasterio
-from rasterio.windows import Window
-
 import tensorflow as tf
 from keras.models import load_model
+from osgeo import gdal
+from rasterio.windows import Window
 
 from constants import Consts
 from raster_utils import align_if_needed, gapfill, normalize_bands
