@@ -30,8 +30,11 @@ dependencies = [
 # Mirrors environment.yml (conda env: data_prep2), used for training-data extraction.
 train = ["tensorflow[and-cuda]==2.18.0"]
 # Mirrors environment-predict.yml (conda env: predict_env), used for inference and the
-# coincident-fire-atl08 DPS algorithm.
-predict = ["tensorflow==2.18.0"]
+# coincident-fire-atl08 DPS algorithm. Also pinned to the CUDA build, kept identical to
+# `train`, even though DPS's current predict workers are CPU-only -- tensorflow[and-cuda]
+# falls back to CPU cleanly when no GPU is present, and keeping the two envs consistent
+# means this is ready for a GPU worker without an environment change.
+predict = ["tensorflow[and-cuda]==2.18.0"]
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [tool.setuptools]

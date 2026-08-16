@@ -10,4 +10,4 @@ dependencies:
     - rasterio=1.5
     - s3fs=2026.4
     - pip:
-        - tensorflow==2.18.0
+        - tensorflow[and-cuda]==2.18.0

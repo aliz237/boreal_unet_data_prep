@@ -2,7 +2,7 @@
 set -euo pipefail
 basedir=$(dirname "$(readlink -f "$0")")
 mkdir -p output
-conda run --live-stream --name data_prep python ${basedir}/predict.py \
+conda run --live-stream --name predict_env python ${basedir}/predict.py \
       --hls_path ${1} \
       --topo_path ${2} \
       --lc_path ${3} \
