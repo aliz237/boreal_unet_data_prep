@@ -5,6 +5,8 @@ import geopandas as gpd
 from osgeo import gdal
 import s3fs
 
+from raster_utils import raster_bounds
+
 
 def coin(fire_df, atl08_df, atl08_year):
     """Augments fire_df with year of coincident atl08"""
@@ -76,11 +78,8 @@ def filter_fires(f_df):
 def crs_bounds(hls_path):
     ref_ds = gdal.Open(hls_path)
     ref_crs = ref_ds.GetProjection()
-    gt = ref_ds.GetGeoTransform()
-    xmin, ymax = gt[0], gt[3]
-    xmax = xmin + (ref_ds.RasterXSize * gt[1])
-    ymin = ymax + (ref_ds.RasterYSize * gt[5])
-    bounds = (xmin, ymin, xmax, ymax)
+    bounds = raster_bounds(ref_ds)
+    ref_ds = None
     return ref_crs, bounds
 
 

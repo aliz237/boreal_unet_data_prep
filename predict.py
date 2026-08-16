@@ -10,7 +10,8 @@ from rasterio.windows import Window
 import tensorflow as tf
 from keras.models import load_model
 
-from data_prep import gapfill, align_if_needed, normalize_bands, Consts
+from constants import Consts
+from raster_utils import align_if_needed, gapfill, normalize_bands
 
 logging.basicConfig(
     level=logging.INFO, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
