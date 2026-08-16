@@ -23,8 +23,8 @@ def atl08_to_raster(
     agb=False,
 ):
 
-    logger.info(f'out_raster_path:{out_raster_path}')
-    logger.info(f'hls_path: {hls_path}')
+    logger.info('out_raster_path:%s', out_raster_path)
+    logger.info('hls_path: %s', hls_path)
 
     df = None
     atl08_agb_path = None
@@ -61,7 +61,7 @@ def atl08_to_raster(
 
     except Exception as e:
         logger.warning(
-            f'Failed to read parquet file ({e}). Will output an empty NoData raster.'
+            'Failed to read parquet file (%s). Will output an empty NoData raster.', e
         )
 
     has_data = df is not None and not df.empty
@@ -70,7 +70,7 @@ def atl08_to_raster(
     with rasterio.open(hls_path) as hls:
         meta = hls.meta.copy()
         h, w = hls.height, hls.width
-        logger.info(f'HLS raster height:{h}, width:{w}')
+        logger.info('HLS raster height:%s, width:%s', h, w)
 
         # Only attempt to calculate coordinates if we have a valid, populated dataframe
         if has_data:
@@ -103,7 +103,7 @@ def atl08_to_raster(
         o.descriptions = (rh, 'AGB') if agb else (rh,)
         o.scales = (Consts.MAX_HEIGHT, Consts.MAX_AGB) if agb else (Consts.MAX_HEIGHT,)
         o.offsets = (0.0, 0.0) if agb else (0.0,)
-        logger.info(f'wrote {out_raster_path}')
+        logger.info('wrote %s', out_raster_path)
 
     if agb and atl08_agb_path and atl08_agb_path.exists():
         atl08_agb_path.unlink()

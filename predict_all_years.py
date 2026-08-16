@@ -35,14 +35,14 @@ def predict_raster_all_years(
     hls_path_year = df[df['tile_num'] == tile_num][['s3_path', 'year']].to_dict(
         orient='records'
     )
-    print(hls_path_year)
+    logger.info('hls_path_year: %s', hls_path_year)
     for i, item in enumerate(hls_path_year):
         try:
-            logger.info(f'Downloading {item["s3_path"]}')
+            logger.info('Downloading %s', item['s3_path'])
             local_path = str(Path(input_dir) / Path(item['s3_path']).name)
             s3.get_file(item['s3_path'], local_path)
 
-            logger.info(f'Running predict for: {local_path}, {item["year"]}')
+            logger.info('Running predict for: %s, %s', local_path, item['year'])
             out_raster_path = (
                 f'{output_dir}/UNet_{Y}_m4_{patch_size}_{tile_num}_{item["year"]}.tif'
             )
@@ -61,8 +61,13 @@ def predict_raster_all_years(
                 max_na_block=max_na_block,
             )
 
-        except Exception as e:
-            logger.info(e)
+        except Exception:
+            logger.exception(
+                'Failed to process tile %s, year %s (%s)',
+                tile_num,
+                item['year'],
+                item['s3_path'],
+            )
 
 
 if __name__ == '__main__':

@@ -31,7 +31,7 @@ def create_training_dataset(
     # if fire_path:
     #     mask_path = create_fire_mask(fire_path, hls_path, year)
     #     if mask_path is None:
-    #         print(f'no fires intersect atl08-{year}, no tfrecords will be created.')
+    #         logger.info('no fires intersect atl08-%s, no tfrecords will be created.', year)
     #         return None
     # else:
     #     mask_path = None
@@ -50,7 +50,7 @@ def create_training_dataset(
     )
     topo_path = t.set_index('tile_num').loc[tile_num, 's3_path']
     logger.info(
-        f'atl08_paths:{atl08_paths}, hls_paths:{hls_paths}, topo_path:{topo_path}'
+        'atl08_paths:%s, hls_paths:%s, topo_path:%s', atl08_paths, hls_paths, topo_path
     )
     hls_norm_paths = dict()
     atl08_raster_paths = dict()
@@ -68,7 +68,7 @@ def create_training_dataset(
             atl08_raster_paths[year] = str(
                 Path('/tmp') / (Path(atl08_paths[year]).stem + '_norm.tif')
             )
-            logger.info(f'rasterizing atl08 {year} to HLS grid')
+            logger.info('rasterizing atl08 %s to HLS grid', year)
             atl08_to_raster(
                 atl08_paths[year],
                 hls_paths[year],
@@ -77,7 +77,7 @@ def create_training_dataset(
                 rh=rh,
                 agb=agb,
             )
-            logger.info(f'Normalizing HLS {year}')
+            logger.info('Normalizing HLS %s', year)
             hls_norm_paths[year] = normalize_bands(
                 hls_paths[year],
                 str(Path('/tmp') / (Path(hls_paths[year]).stem + '_norm.tif')),
@@ -85,7 +85,7 @@ def create_training_dataset(
                 ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'nbr'],
             )
 
-        logger.info(f'Extracting patches for tile: {tile_num}')
+        logger.info('Extracting patches for tile: %s', tile_num)
         extract_patches_tfrec(
             hls_norm_paths,
             atl08_raster_paths,

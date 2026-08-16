@@ -1,12 +1,17 @@
 import argparse
+import logging
 from pathlib import Path
-from pprint import pprint
 
 import geopandas as gpd
 import s3fs
 from osgeo import gdal
 
 from raster_utils import raster_bounds
+
+logging.basicConfig(
+    level=logging.INFO, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 def coin(fire_df, atl08_df, atl08_year):
@@ -26,10 +31,12 @@ def coin(fire_df, atl08_df, atl08_year):
 
 def download_(tile_num, atl08_paths, atl08_years, hls_path):
     # download atl08 paths 2019-2024 for tile_num
-    print('in download_' + '-' * 80)
-    pprint(atl08_paths)
-    pprint(atl08_years)
-    pprint(hls_path)
+    logger.info(
+        'download_: atl08_paths=%s, atl08_years=%s, hls_path=%s',
+        atl08_paths,
+        atl08_years,
+        hls_path,
+    )
     s3 = s3fs.S3FileSystem(anon=False)
     local_atl08_paths = []
     local_atl08_years = []
@@ -39,15 +46,17 @@ def download_(tile_num, atl08_paths, atl08_years, hls_path):
             s3.get_file(s3_path, local_path)
             local_atl08_paths.append(local_path)
             local_atl08_years.append(year)
-        except Exception:
-            print(f'did not find atl08 for tile, year {tile_num}-{year}')
+        except Exception as e:
+            logger.warning(
+                'did not find atl08 for tile, year %s-%s: %s', tile_num, year, e
+            )
 
     # need only 2019 HLS as a reference raster for CRS, shape, etc
     try:
         local_hls_path = str(Path('input') / Path(hls_path).name)
         s3.get_file(hls_path, local_hls_path)
-    except Exception:
-        print(f'did not find HLS for tile, year {tile_num}-2019')
+    except Exception as e:
+        logger.warning('did not find HLS for tile, year %s-2019: %s', tile_num, e)
         local_hls_path = None
 
     if not local_atl08_paths or not local_hls_path:
@@ -86,19 +95,22 @@ def run_coin(fire_path, tile_num, atl08_paths, atl08_years, hls_path):
     local_atl08_paths, local_atl08_years, local_hls_path = download_(
         tile_num, atl08_paths, atl08_years, hls_path
     )
-    pprint(local_atl08_paths)
-    pprint(local_atl08_years)
-    pprint(local_hls_path)
+    logger.info(
+        'local_atl08_paths=%s, local_atl08_years=%s, local_hls_path=%s',
+        local_atl08_paths,
+        local_atl08_years,
+        local_hls_path,
+    )
 
     ref_crs, ref_bounds = crs_bounds(local_hls_path)
 
-    print(f'reading {fire_path}')
+    logger.info('reading %s', fire_path)
     f_df = gpd.read_file(fire_path)
     f_df = f_df.to_crs(ref_crs)
     f_df = gpd.clip(f_df, ref_bounds)
-    print(f'clipped fire_df shape: {f_df.shape}')
+    logger.info('clipped fire_df shape: %s', f_df.shape)
     if f_df.shape[0] == 0:
-        print(f'No fires in tile {tile_num}')
+        logger.info('No fires in tile %s', tile_num)
         return None
 
     f_df['coin'] = 0
@@ -106,19 +118,22 @@ def run_coin(fire_path, tile_num, atl08_paths, atl08_years, hls_path):
     ups = []
 
     for a, y in zip(local_atl08_paths, local_atl08_years):
-        print(
-            f'finding intersections of {Path(a).stem} and {Path(fire_path).stem} for year {y}'
+        logger.info(
+            'finding intersections of %s and %s for year %s',
+            Path(a).stem,
+            Path(fire_path).stem,
+            y,
         )
         a_df = gpd.read_parquet(a)
         f_df, up = coin(f_df, a_df, y)
         ups.append(up)
 
-    print(ups)
+    logger.info('coincidence flags per atl08 year: %s', ups)
     f_df = filter_fires(f_df)
 
     if f_df.shape[0] > 0:
         out_fire = f'output/{Path(fire_path).stem}_{tile_num}.gpkg'
-        print(f'Saving {f_df.shape[0]} fires to {out_fire}')
+        logger.info('Saving %s fires to %s', f_df.shape[0], out_fire)
         f_df.to_file(out_fire)
 
 

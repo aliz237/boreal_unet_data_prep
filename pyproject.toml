@@ -72,5 +72,8 @@ testpaths = ["tests"]
 # E4/E7/E9/F is the classic pyflakes + pycodestyle-errors baseline this repo was already
 # formatted against; I is added for import sorting, meaningful now that there's a real
 # internal module graph (constants/raster_utils/atl08_utils/patch_extraction/tfrecord_utils).
-# Broadening this (bugbear, comprehensions, etc.) is a separate lint-policy decision.
-select = ["E4", "E7", "E9", "F", "I"]
+# G (flake8-logging-format) catches eager string formatting in logging calls -- e.g.
+# logger.info(f'...') -- which builds the string even when the level is disabled; use
+# logger.info('...%s', value) instead so formatting is deferred to emit time.
+# Broadening this further (bugbear, comprehensions, etc.) is a separate lint-policy decision.
+select = ["E4", "E7", "E9", "F", "I", "G"]

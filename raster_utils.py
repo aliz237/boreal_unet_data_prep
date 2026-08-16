@@ -22,7 +22,7 @@ def gapfill(arr, max_na_block=3, nodata_thresh=0.05):
     # if over 5% of the Blue band is NaN, drop the patch
     ndfrac = np.isnan(arr[0]).sum() / arr[0].size
     if ndfrac > nodata_thresh:
-        logger.info(f'Gapfill: Dropping low quality patch, ndfrac: {ndfrac}')
+        logger.info('Gapfill: Dropping low quality patch, ndfrac: %s', ndfrac)
         return False
 
     for band in bands:
@@ -45,7 +45,7 @@ def gapfill(arr, max_na_block=3, nodata_thresh=0.05):
         # threshold too many NA blocks
         if na_blocks_band > max_na_block:
             logger.info(
-                f'Gapfill: Dropping low quality patch, na_blocks: {na_blocks_band}'
+                'Gapfill: Dropping low quality patch, na_blocks: %s', na_blocks_band
             )
             return False
 
@@ -109,7 +109,7 @@ def align_if_needed(hls_path, topo_path, lc_path):
         ext2 = raster_bounds(ds2)
         ext3 = raster_bounds(ds3)
         logger.info(
-            'HLS, TOPO, and LC dims dont match: {dims}, resampling to common grid.'
+            'HLS, TOPO, and LC dims dont match: %s, resampling to common grid.', dims
         )
 
         intersection = [
@@ -151,6 +151,6 @@ def align_if_needed(hls_path, topo_path, lc_path):
         )
 
         ds1 = ds2 = ds3 = None
-        logger.info(f'Calculated Intersection: {intersection}')
+        logger.info('Calculated Intersection: %s', intersection)
 
     return Path(hls_path), Path(topo_path), Path(lc_path)

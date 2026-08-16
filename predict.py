@@ -16,7 +16,7 @@ logging.basicConfig(
     level=logging.INFO, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-logger.info(f'Devices: {tf.config.list_physical_devices()}')
+logger.info('Devices: %s', tf.config.list_physical_devices())
 
 
 def predict_raster(
@@ -61,7 +61,7 @@ def predict_raster(
     kernel = np.outer(ax, ax)
     model = load_model(model_path, compile=False)
     scalar = Consts.MAX_AGB if agb else Consts.MAX_HEIGHT
-    logger.info(f'agb:{agb}, scalar:{scalar}')
+    logger.info('agb:%s, scalar:%s', agb, scalar)
     with rasterio.open(hls_path) as hls:
         w, h = hls.width, hls.height
         out_arr = np.full((h, w), 0, dtype=np.float32)
@@ -121,9 +121,12 @@ def predict_raster(
         lc_arr = lc.read(1)
         out_arr[np.isin(lc_arr, [0, 50, 60, 70, 80, 200])] = ndval
 
-    logger.info(f'min={np.min(out_arr)}, min={np.min(out_arr[out_arr != ndval])}')
-    logger.info(f"""{hls_patches_dropped} hls_patches_dropped,
-    {topo_patches_dropped} topo_patches_dropped""")
+    logger.info('min=%s, min=%s', np.min(out_arr), np.min(out_arr[out_arr != ndval]))
+    logger.info(
+        '%s hls_patches_dropped, %s topo_patches_dropped',
+        hls_patches_dropped,
+        topo_patches_dropped,
+    )
     meta.update({'count': 1, 'nodata': ndval, 'dtype': 'float32'})
     tmp_tif = out_raster_path.replace('.tif', '_temp.tif')
     with rasterio.open(tmp_tif, 'w', **meta) as o:

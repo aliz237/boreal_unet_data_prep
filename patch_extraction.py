@@ -31,7 +31,7 @@ def extract_patches_tfrec(
     )
     all_dims = set()
     for t1, t2 in zip(years[:-1], years[1:]):
-        logger.info(f't1:{t1}, t2:{t2}')
+        logger.info('t1:%s, t2:%s', t1, t2)
         with (
             rasterio.open(hls_paths[t1]) as h1,
             rasterio.open(hls_paths[t2]) as h2,
@@ -114,17 +114,17 @@ def extract_patches_tfrec(
                     tfw.write(ser.numpy())
 
                     if n % 100 == 0:
-                        logger.info(f'wrote {n} records')
+                        logger.info('wrote %s records', n)
 
-            logger.info(f'wrote {n} records')
+            logger.info('wrote %s records', n)
     tfw.close()
     if len(all_dims) != 1:
         logger.info('shape mismatch ...')
 
-    logger.info(f'Shapes: {all_dims}')
+    logger.info('Shapes: %s', all_dims)
 
     if n == 0:
-        logger.info(f'No patches extracted from {hls_paths[t1]}!')
+        logger.info('No patches extracted from %s!', hls_paths[t1])
         tfrecord_path.unlink(missing_ok=True)
     else:
         # rename the tfrecord file to include the record count
@@ -133,4 +133,4 @@ def extract_patches_tfrec(
                 tfrecord_path.name.replace('.tfrecord', f'_{n}.tfrecord')
             )
         )
-        logger.info(f'{n} records saved')
+        logger.info('%s records saved', n)
