@@ -60,6 +60,9 @@ extend-exclude = ["*.ipynb"]
 [tool.ruff.format]
 quote-style = "single"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.ruff.lint]
 # Explicit rather than relying on ruff's ambient default selection, which has grown far
 # broader over ruff releases (as of ruff 0.16 it's not just pyflakes/pycodestyle errors).
