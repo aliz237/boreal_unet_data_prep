@@ -1,11 +1,9 @@
 import argparse
 import logging
-from pathlib import Path
 
-import pandas as pd
-import s3fs
-
-from predict import predict_raster
+from constants import Consts
+from predict import download_to_local, predict_raster
+from stac_search import get_single_path, get_year_paths, load_items
 
 logging.basicConfig(
     level=logging.INFO, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
@@ -15,9 +13,7 @@ logger = logging.getLogger(__name__)
 
 def predict_raster_all_years(
     tile_num,
-    hls_tindex,
-    topo_path,
-    lc_path,
+    stac_catalog,
     model_path,
     output_dir='output',
     input_dir='input',
@@ -30,21 +26,24 @@ def predict_raster_all_years(
     max_na_block=3,
 ):
     Y = 'AGB' if agb else 'Ht'
-    df = pd.read_csv(hls_tindex)
-    s3 = s3fs.S3FileSystem(anon=False, client_kwargs={'region_name': 'us-west-2'})
-    hls_path_year = df[df['tile_num'] == tile_num][['s3_path', 'year']].to_dict(
-        orient='records'
+    items = load_items(stac_catalog)
+    hls_paths = get_year_paths(items, Consts.HLS_COLLECTION, tile_num)
+    topo_path = get_single_path(items, Consts.TOPO_COLLECTION, tile_num)
+    lc_path = get_single_path(items, Consts.LC_COLLECTION, tile_num)
+    logger.info(
+        'hls_paths: %s, topo_path: %s, lc_path: %s', hls_paths, topo_path, lc_path
     )
-    logger.info('hls_path_year: %s', hls_path_year)
-    for i, item in enumerate(hls_path_year):
-        try:
-            logger.info('Downloading %s', item['s3_path'])
-            local_path = str(Path(input_dir) / Path(item['s3_path']).name)
-            s3.get_file(item['s3_path'], local_path)
+    # topo/lc don't vary by year, so download once and reuse across the loop below
+    topo_path = download_to_local(topo_path, input_dir)
+    lc_path = download_to_local(lc_path, input_dir)
 
-            logger.info('Running predict for: %s, %s', local_path, item['year'])
+    for year, s3_path in sorted(hls_paths.items()):
+        try:
+            local_path = download_to_local(s3_path, input_dir)
+
+            logger.info('Running predict for: %s, %s', local_path, year)
             out_raster_path = (
-                f'{output_dir}/UNet_{Y}_m4_{patch_size}_{tile_num}_{item["year"]}.tif'
+                f'{output_dir}/UNet_{Y}_m4_{patch_size}_{tile_num}_{year}.tif'
             )
             predict_raster(
                 hls_path=local_path,
@@ -63,10 +62,7 @@ def predict_raster_all_years(
 
         except Exception:
             logger.exception(
-                'Failed to process tile %s, year %s (%s)',
-                tile_num,
-                item['year'],
-                item['s3_path'],
+                'Failed to process tile %s, year %s (%s)', tile_num, year, s3_path
             )
 
 
@@ -76,14 +72,13 @@ if __name__ == '__main__':
     )
     parse.add_argument('--tile_num', help='tile number', type=int, required=True)
     parse.add_argument(
-        '--hls_tindex',
-        help='HLS tindex with s3_path and tile_num attributes',
+        '--stac_catalog',
+        help=(
+            'path to the STAC items GeoParquet table (local path or s3://), built '
+            'by build_stac_catalog.py'
+        ),
         required=True,
     )
-    parse.add_argument(
-        '--topo_path', help='topo image path with slope as second band', required=True
-    )
-    parse.add_argument('--lc_path', help='land cover image path', required=True)
     (
         parse.add_argument(
             '--output_dir',

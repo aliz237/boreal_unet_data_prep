@@ -79,17 +79,37 @@ class TestBuildItems:
         assert item.common_metadata.start_datetime.year == 2019
         assert item.common_metadata.end_datetime.year == 2019
 
-    def test_topo_items_have_no_year_and_a_fixed_datetime(self, tmp_path):
+    def test_topo_items_have_no_year_property_but_use_source_year_for_datetime(
+        self, tmp_path
+    ):
         grid_path = _write_tile_grid(tmp_path / 'grid.gpkg', [(1, NORMAL_TILE_GEOM)])
         grid = load_tile_grid(str(grid_path))
         tindex = pd.DataFrame([{'tile_num': 1, 's3_path': 's3://a/topo_1.tif'}])
 
-        items = build_items(tindex, grid, 'boreal-topo-stack', has_year=False)
+        items = build_items(
+            tindex, grid, 'boreal-topo-stack', has_year=False, source_year=2019
+        )
 
         assert len(items) == 1
-        assert items[0].id == '1'
-        assert items[0].properties == {'tile_num': 1}
-        assert items[0].datetime is not None
+        item = items[0]
+        assert item.id == '1'
+        # properties also carries start_datetime/end_datetime, injected by pystac
+        # itself from the constructor kwargs -- not asserting exact dict equality.
+        assert item.properties['tile_num'] == 1
+        assert 'year' not in item.properties
+        # datetime=None + a start/end range, same convention as the per-year
+        # collections -- see build_items()'s docstring.
+        assert item.datetime is None
+        assert item.common_metadata.start_datetime.year == 2019
+        assert item.common_metadata.end_datetime.year == 2019
+
+    def test_missing_source_year_raises_for_time_invariant_collections(self, tmp_path):
+        grid_path = _write_tile_grid(tmp_path / 'grid.gpkg', [(1, NORMAL_TILE_GEOM)])
+        grid = load_tile_grid(str(grid_path))
+        tindex = pd.DataFrame([{'tile_num': 1, 's3_path': 's3://a/topo_1.tif'}])
+
+        with pytest.raises(ValueError):
+            build_items(tindex, grid, 'boreal-topo-stack', has_year=False)
 
     def test_tindex_row_referencing_unknown_tile_is_skipped_not_fatal(self, tmp_path):
         grid_path = _write_tile_grid(tmp_path / 'grid.gpkg', [(1, NORMAL_TILE_GEOM)])
@@ -121,6 +141,7 @@ class TestBuildCatalog:
         hls_path = tmp_path / 'hls_tindex.csv'
         atl08_path = tmp_path / 'atl08_tindex.csv'
         topo_path = tmp_path / 'topo_tindex.csv'
+        lc_path = tmp_path / 'lc_tindex.csv'
         pd.DataFrame(
             [{'tile_num': 1, 'year': 2019, 's3_path': 's3://a/hls_1_2019.tif'}]
         ).to_csv(hls_path, index=False)
@@ -130,10 +151,18 @@ class TestBuildCatalog:
         pd.DataFrame([{'tile_num': 1, 's3_path': 's3://a/topo_1.tif'}]).to_csv(
             topo_path, index=False
         )
+        pd.DataFrame([{'tile_num': 1, 's3_path': 's3://a/lc_1.tif'}]).to_csv(
+            lc_path, index=False
+        )
         out_dir = tmp_path / 'catalog'
 
         catalog, items_path = build_catalog(
-            str(hls_path), str(atl08_path), str(topo_path), str(grid_path), str(out_dir)
+            str(hls_path),
+            str(atl08_path),
+            str(topo_path),
+            str(lc_path),
+            str(grid_path),
+            str(out_dir),
         )
 
         assert (out_dir / 'catalog.json').exists()
@@ -147,4 +176,7 @@ class TestBuildCatalog:
         assert (
             stac_search.get_single_path(items, 'boreal-topo-stack', 1)
             == 's3://a/topo_1.tif'
+        )
+        assert (
+            stac_search.get_single_path(items, 'boreal-landcover', 1) == 's3://a/lc_1.tif'
         )

@@ -30,3 +30,12 @@ class Consts:
     HLS_COLLECTION = 'boreal-hls-composite'
     ATL08_COLLECTION = 'boreal-atl08-labels'
     TOPO_COLLECTION = 'boreal-topo-stack'
+    LC_COLLECTION = 'boreal-landcover'
+
+    # Source product vintages for the two time-invariant collections (topo stack,
+    # land cover): their tindexes carry no year column, since there's one file per
+    # tile rather than per tile per year, but the underlying product still has a real
+    # acquisition/reference year. build_stac_catalog.py uses these to set each
+    # Item's start_datetime/end_datetime instead of an arbitrary placeholder.
+    TOPO_SOURCE_YEAR = 2019  # Copernicus GLO-30
+    LC_SOURCE_YEAR = 2021  # ESA WorldCover 10m v200

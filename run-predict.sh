@@ -3,9 +3,9 @@ set -euo pipefail
 basedir=$(dirname "$(readlink -f "$0")")
 mkdir -p output
 conda run --live-stream --name predict_env python ${basedir}/predict.py \
-      --hls_path ${1} \
-      --topo_path ${2} \
-      --lc_path ${3} \
+      --tile_num ${1} \
+      --year ${2} \
+      --stac_catalog ${3} \
       --model_path ${4} \
       --out_raster_path ${5} \
       --patch_size ${6} \

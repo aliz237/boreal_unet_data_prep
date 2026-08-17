@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
+import s3fs
 import tensorflow as tf
 from keras.models import load_model
 from osgeo import gdal
@@ -11,12 +12,41 @@ from rasterio.windows import Window
 
 from constants import Consts
 from raster_utils import align_if_needed, gapfill, normalize_bands
+from stac_search import get_single_path, get_year_paths, load_items
 
 logging.basicConfig(
     level=logging.INFO, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 logger.info('Devices: %s', tf.config.list_physical_devices())
+
+
+def download_to_local(s3_path, local_dir='input'):
+    """Downloads an s3:// asset to local_dir and returns the local path (a no-op,
+    returning the path unchanged, if it isn't an s3:// URL).
+
+    predict_raster()'s raster I/O (normalize_bands, align_if_needed, rasterio.open)
+    needs local filesystem paths -- e.g. normalize_bands writes its output alongside
+    the input via `path.replace('.tif', '_norm.tif')`, which isn't meaningful for an
+    s3:// href. STAC-resolved asset hrefs are always s3:// URLs, so every caller must
+    materialize them locally first.
+
+    This is an explicit step here rather than relying on DPS's automatic single-file
+    "file input" staging (as topo/land-cover paths used to, before the STAC
+    migration): that only works cleanly for one fixed file per input. HLS needs a
+    different file per year, which can't be expressed as a fixed DPS file input
+    without editing the registration YAML every time a new year is processed -- the
+    same reason predict_all_years.py already downloaded HLS this way before topo/
+    land-cover moved onto the STAC catalog too.
+    """
+    if not str(s3_path).startswith('s3://'):
+        return str(s3_path)
+    Path(local_dir).mkdir(parents=True, exist_ok=True)
+    local_path = str(Path(local_dir) / Path(s3_path).name)
+    s3 = s3fs.S3FileSystem(anon=False, client_kwargs={'region_name': 'us-west-2'})
+    logger.info('Downloading %s', s3_path)
+    s3.get_file(s3_path, local_path)
+    return local_path
 
 
 def predict_raster(
@@ -158,13 +188,25 @@ if __name__ == '__main__':
     parse = argparse.ArgumentParser(
         description='Predicts a vegetation height raster given a HLS, Slope and unet model'
     )
-    parse.add_argument('--hls_path', help='HLS image path', required=True)
+    parse.add_argument('--tile_num', help='boreal tile number', type=int, required=True)
     parse.add_argument(
-        '--topo_path', help='topo image path with slope as second band', required=True
+        '--year', help='HLS composite year to predict on', type=int, required=True
     )
-    parse.add_argument('--lc_path', help='land cover image path', required=True)
+    parse.add_argument(
+        '--stac_catalog',
+        help=(
+            'path to the STAC items GeoParquet table (local path or s3://), built '
+            'by build_stac_catalog.py'
+        ),
+        required=True,
+    )
     parse.add_argument(
         '--out_raster_path', help='output predicted raster path', required=True
+    )
+    parse.add_argument(
+        '--input_dir',
+        help='local dir to download STAC-resolved assets into',
+        default='input',
     )
     parse.add_argument('--model_path', help='path to UNet model', required=True)
     parse.add_argument(
@@ -194,4 +236,25 @@ if __name__ == '__main__':
 
     args = parse.parse_args()
     logger.info(args)
-    predict_raster(**vars(args))
+
+    items = load_items(args.stac_catalog)
+    hls_path = get_year_paths(items, Consts.HLS_COLLECTION, args.tile_num)[args.year]
+    topo_path = get_single_path(items, Consts.TOPO_COLLECTION, args.tile_num)
+    lc_path = get_single_path(items, Consts.LC_COLLECTION, args.tile_num)
+
+    hls_path = download_to_local(hls_path, args.input_dir)
+    topo_path = download_to_local(topo_path, args.input_dir)
+    lc_path = download_to_local(lc_path, args.input_dir)
+
+    predict_raster(
+        hls_path=hls_path,
+        topo_path=topo_path,
+        lc_path=lc_path,
+        out_raster_path=args.out_raster_path,
+        model_path=args.model_path,
+        patch_size=args.patch_size,
+        step_size=args.step_size,
+        ndval=args.ndval,
+        batch_size=args.batch_size,
+        agb=args.agb,
+    )

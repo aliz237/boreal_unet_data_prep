@@ -1,4 +1,4 @@
-algorithm_description: Predicts Height or AGB for all years given a model, HLS tindex, topo and land cover inputs
+algorithm_description: Predicts Height or AGB for all years given a model and a STAC catalog of HLS, topo, and land cover assets
 algorithm_name: boreal_unet_predict
 algorithm_version: v1.2
 build_command: boreal_unet_data_prep/build-env-predict.sh
@@ -8,14 +8,6 @@ inputs:
   config: []
   file:
   - default: ''
-    description: topo file url
-    name: topo_fn_url
-    required: true
-  - default: ''
-    description: landcover file url
-    name: lc_fn_url
-    required: true
-  - default: ''
     description: model.keras file url
     name: model_fn_url
     required: true
@@ -23,18 +15,10 @@ inputs:
   - default: ''
     description: tile number
     name: tile_num
-    required: true  
-  - default: ''
-    description: HLS tindex path
-    name: hls_tindex
     required: true
   - default: ''
-    description: topo file
-    name: topo_fn
-    required: true
-  - default: ''
-    description: land cover file
-    name: lc_fn
+    description: path to the STAC items GeoParquet table (built by build_stac_catalog.py)
+    name: stac_catalog
     required: true
   - default: ''
     description: model file

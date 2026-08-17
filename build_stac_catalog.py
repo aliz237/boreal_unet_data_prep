@@ -1,6 +1,6 @@
 """Builds a static STAC catalog (+ a flattened GeoParquet items table) for the HLS
-composite, ATL08-derived label, and topo-stack products this pipeline consumes, from
-the existing tindex CSVs and the canonical tile-grid GeoPackage.
+composite, ATL08-derived label, topo-stack, and land-cover products this pipeline
+consumes, from the existing tindex CSVs and the canonical tile-grid GeoPackage.
 
 This is a standalone, occasionally-run bootstrap script -- not part of the regular
 per-tile data_prep.py run. Once built, upload out_dir's contents to S3 (e.g. via
@@ -32,10 +32,7 @@ logger = logging.getLogger(__name__)
 HLS_COLLECTION = Consts.HLS_COLLECTION
 ATL08_COLLECTION = Consts.ATL08_COLLECTION
 TOPO_COLLECTION = Consts.TOPO_COLLECTION
-
-# The topo stack has no per-item acquisition date in its tindex. Placeholder until
-# the DEM/derived-product vintage is confirmed and threaded through.
-TOPO_ITEM_DATETIME = datetime(2024, 1, 1, tzinfo=timezone.utc)
+LC_COLLECTION = Consts.LC_COLLECTION
 
 # Sanity threshold for antimeridian-fix regressions: this is a circumpolar grid
 # centered on the dateline, and any single ~90km tile whose fixed bbox is still this
@@ -81,11 +78,17 @@ def load_tile_grid(tile_grid_path):
     return grid.assign(fixed_geometry=fixed_geoms, fixed_bbox=fixed_bboxes)
 
 
-def build_items(tindex_df, tile_grid, collection, has_year):
+def build_items(tindex_df, tile_grid, collection, has_year, source_year=None):
     """Converts one tindex CSV's rows into pystac.Items, joined to tile geometry by
-    tile_num. `has_year=True` for HLS/ATL08 (one Item per tile per year); False for
-    the time-invariant topo stack (one Item per tile).
+    tile_num. `has_year=True` for HLS/ATL08 (one Item per tile per year, year comes
+    from the tindex row itself). `has_year=False` for the time-invariant topo stack
+    and land cover (one Item per tile); these tindexes carry no year column, but the
+    underlying product still has a real vintage, so `source_year` is required and
+    used for the Item's start_datetime/end_datetime instead of a placeholder.
     """
+    if not has_year and source_year is None:
+        raise ValueError('source_year is required when has_year=False')
+
     items = []
     missing_tiles = set()
     for row in tindex_df.itertuples():
@@ -97,23 +100,22 @@ def build_items(tindex_df, tile_grid, collection, has_year):
 
         if has_year:
             item_id = f'{row.tile_num}_{row.year}'
-            item_datetime = None
-            start_datetime = datetime(row.year, 1, 1, tzinfo=timezone.utc)
-            end_datetime = datetime(row.year, 12, 31, tzinfo=timezone.utc)
+            year = row.year
             properties = {'tile_num': int(row.tile_num), 'year': int(row.year)}
         else:
             item_id = f'{row.tile_num}'
-            item_datetime = TOPO_ITEM_DATETIME
-            start_datetime = None
-            end_datetime = None
+            year = source_year
             properties = {'tile_num': int(row.tile_num)}
+
+        start_datetime = datetime(year, 1, 1, tzinfo=timezone.utc)
+        end_datetime = datetime(year, 12, 31, tzinfo=timezone.utc)
 
         items.append(
             pystac.Item(
                 id=item_id,
                 geometry=fixed_geometry,
                 bbox=bbox,
-                datetime=item_datetime,
+                datetime=None,
                 start_datetime=start_datetime,
                 end_datetime=end_datetime,
                 properties=properties,
@@ -150,17 +152,10 @@ def build_collection(collection_id, items, description):
         max(b[2] for b in bboxes),
         max(b[3] for b in bboxes),
     ]
-    all_times = [item.datetime for item in items if item.datetime is not None]
-    all_times += [
-        item.common_metadata.start_datetime
-        for item in items
-        if item.common_metadata.start_datetime is not None
-    ]
-    all_times += [
-        item.common_metadata.end_datetime
-        for item in items
-        if item.common_metadata.end_datetime is not None
-    ]
+    # Every Item uses datetime=None + start_datetime/end_datetime (a range, not an
+    # instant) -- see build_items().
+    all_times = [item.common_metadata.start_datetime for item in items]
+    all_times += [item.common_metadata.end_datetime for item in items]
     interval = [min(all_times), max(all_times)] if all_times else [None, None]
 
     collection = pystac.Collection(
@@ -175,7 +170,9 @@ def build_collection(collection_id, items, description):
     return collection
 
 
-def build_catalog(hls_tindex, atl08_tindex, topo_tindex, tile_grid_path, out_dir):
+def build_catalog(
+    hls_tindex, atl08_tindex, topo_tindex, lc_tindex, tile_grid_path, out_dir
+):
     tile_grid = load_tile_grid(tile_grid_path)
 
     hls_items = build_items(
@@ -185,14 +182,25 @@ def build_catalog(hls_tindex, atl08_tindex, topo_tindex, tile_grid_path, out_dir
         pd.read_csv(atl08_tindex), tile_grid, ATL08_COLLECTION, has_year=True
     )
     topo_items = build_items(
-        pd.read_csv(topo_tindex), tile_grid, TOPO_COLLECTION, has_year=False
+        pd.read_csv(topo_tindex),
+        tile_grid,
+        TOPO_COLLECTION,
+        has_year=False,
+        source_year=Consts.TOPO_SOURCE_YEAR,
+    )
+    lc_items = build_items(
+        pd.read_csv(lc_tindex),
+        tile_grid,
+        LC_COLLECTION,
+        has_year=False,
+        source_year=Consts.LC_SOURCE_YEAR,
     )
 
     catalog = pystac.Catalog(
         id='boreal-unet-assets',
         description=(
-            'HLS composite, ATL08-derived label, and topo-stack assets for the '
-            'boreal UNet pipeline.'
+            'HLS composite, ATL08-derived label, topo-stack, and land-cover assets '
+            'for the boreal UNet pipeline.'
         ),
     )
     catalog.add_child(
@@ -215,7 +223,17 @@ def build_catalog(hls_tindex, atl08_tindex, topo_tindex, tile_grid_path, out_dir
             topo_items,
             (
                 'Copernicus GLO-30 derived topo stack (elevation, slope, TSRI, TPI, '
-                'slopemask), per tile.'
+                f'slopemask), per tile. Source: Copernicus GLO-30, {Consts.TOPO_SOURCE_YEAR}.'
+            ),
+        )
+    )
+    catalog.add_child(
+        build_collection(
+            LC_COLLECTION,
+            lc_items,
+            (
+                'Land cover classification, per tile. Source: ESA WorldCover 10m '
+                f'v200, {Consts.LC_SOURCE_YEAR}.'
             ),
         )
     )
@@ -226,7 +244,7 @@ def build_catalog(hls_tindex, atl08_tindex, topo_tindex, tile_grid_path, out_dir
     )
     logger.info('Wrote static catalog to %s', out_dir)
 
-    all_items = hls_items + atl08_items + topo_items
+    all_items = hls_items + atl08_items + topo_items + lc_items
     record_batches = sga.parse_stac_items_to_arrow(all_items)
     items_path = out_dir / 'items.parquet'
     sga.to_parquet(record_batches, str(items_path))
@@ -245,6 +263,7 @@ if __name__ == '__main__':
     parse.add_argument('--hls_tindex', help='HLS tindex CSV path', required=True)
     parse.add_argument('--atl08_tindex', help='ATL08 tindex CSV path', required=True)
     parse.add_argument('--topo_tindex', help='topo tindex CSV path', required=True)
+    parse.add_argument('--lc_tindex', help='land cover tindex CSV path', required=True)
     parse.add_argument(
         '--tile_grid', help='path to the canonical tile-grid GeoPackage', required=True
     )
@@ -256,5 +275,10 @@ if __name__ == '__main__':
 
     args = parse.parse_args()
     build_catalog(
-        args.hls_tindex, args.atl08_tindex, args.topo_tindex, args.tile_grid, args.out_dir
+        args.hls_tindex,
+        args.atl08_tindex,
+        args.topo_tindex,
+        args.lc_tindex,
+        args.tile_grid,
+        args.out_dir,
     )

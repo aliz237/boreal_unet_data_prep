@@ -6,18 +6,16 @@ AGB=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --tile_num)   TILE_NUM="$2"; shift 2 ;;
-    --hls_tindex) HLS_TINDEX="$2"; shift 2 ;;
-    --topo_path)  TOPO_PATH="$2"; shift 2 ;;
-    --lc_path)    LC_PATH="$2"; shift 2 ;;
-    --model_path) MODEL_PATH="$2"; shift 2 ;;
-    --patch_size) PATCH_SIZE="$2"; shift 2 ;; # Defaults at 128
-    --step_size)    STEP_SIZE="$2"; shift 2 ;; # Default of 32
-    --output_dir) OUTPUT_DIR="$2"; shift 2 ;;
-    --input_dir)  INPUT_DIR="$2"; shift 2 ;;
+    --tile_num)      TILE_NUM="$2"; shift 2 ;;
+    --stac_catalog)  STAC_CATALOG="$2"; shift 2 ;;
+    --model_path)    MODEL_PATH="$2"; shift 2 ;;
+    --patch_size)    PATCH_SIZE="$2"; shift 2 ;; # Defaults at 128
+    --step_size)     STEP_SIZE="$2"; shift 2 ;; # Default of 32
+    --output_dir)    OUTPUT_DIR="$2"; shift 2 ;;
+    --input_dir)     INPUT_DIR="$2"; shift 2 ;;
     --nodata_thresh) NODATA_THRESH="$2"; shift 2 ;;
-    --max_na_block) MAX_NA_BLOCK="$2"; shift 2 ;;
-    --agb)        AGB=true; shift 1 ;;
+    --max_na_block)  MAX_NA_BLOCK="$2"; shift 2 ;;
+    --agb)           AGB=true; shift 1 ;;
     *) echo "Unknown argument: $1"; exit 1 ;;
   esac
 done
@@ -35,10 +33,8 @@ fi
 
 CMD=(
   conda run --live-stream --name predict_env python "${basedir}/predict_all_years.py"
-  --hls_tindex "$HLS_TINDEX"
   --tile_num "$TILE_NUM"
-  --topo_path "$TOPO_PATH"
-  --lc_path "$LC_PATH"
+  --stac_catalog "$STAC_CATALOG"
   --model_path "$MODEL_PATH"
   --output_dir "$OUTPUT_DIR"
   --input_dir "$INPUT_DIR"
@@ -48,8 +44,8 @@ if [[ -n "${PATCH_SIZE:-}" ]]; then
     CMD+=(--patch_size "$PATCH_SIZE")
 fi
 
-if [[ -n "${OVERLAP:-}" ]]; then
-    CMD+=(--overlap "$OVERLAP")
+if [[ -n "${STEP_SIZE:-}" ]]; then
+    CMD+=(--step_size "$STEP_SIZE")
 fi
 
 if [[ "${AGB}" == true ]]; then

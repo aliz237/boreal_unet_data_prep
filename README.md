@@ -9,19 +9,32 @@ locally and as registered algorithms on NASA MAAP's DPS job runner.
 
 1. **`coincident_fire_atl08.py`** *(optional)* -- finds fire polygons that
    have both pre- and post-fire ATL08 LiDAR coverage, for building
-   fire-disturbance training/validation sets.
-2. **`data_prep.py`** -- fuses HLS + ATL08 + topography into normalized,
-   patch-extracted TFRecords for training. Internally shells out to
-   **`atl08_to_agb.R`** to convert ATL08 height metrics to AGB when `--agb`
-   is passed.
-3. **Model training** -- currently done in a Jupyter notebook that isn't
+   fire-disturbance training/validation sets. Not yet migrated to STAC (see
+   below); still takes pre-resolved paths directly.
+2. **`build_stac_catalog.py`** -- builds the STAC catalog every other script
+   (except `coincident_fire_atl08.py`) reads assets from: joins the existing
+   tindex CSVs (HLS composite, ATL08 labels, topo stack, land cover) to the
+   canonical tile-grid GeoPackage, and writes a static catalog + a flattened
+   GeoParquet items table. An occasionally-run bootstrap step, not part of
+   the regular per-tile flow -- see its module docstring for the "why STAC,
+   why static, why GeoParquet" rationale.
+3. **`data_prep.py`** -- fuses HLS + ATL08 + topography into normalized,
+   patch-extracted TFRecords for training, resolving assets by `tile_num`
+   against the STAC catalog. Internally shells out to **`atl08_to_agb.R`**
+   to convert ATL08 height metrics to AGB when `--agb` is passed.
+4. **Model training** -- currently done in a Jupyter notebook that isn't
    checked into this repo yet (an updated version is coming).
-4. **`predict.py`** / **`predict_all_years.py`** -- run a trained U-Net over
-   a single HLS scene, or over every available year for a tile.
+5. **`predict.py`** / **`predict_all_years.py`** -- run a trained U-Net over
+   a single HLS scene+year, or over every available year for a tile, also
+   resolving HLS/topo/land-cover by `tile_num` against the STAC catalog.
 
 Shared logic lives in `constants.py`, `raster_utils.py`, `atl08_utils.py`,
-`patch_extraction.py`, and `tfrecord_utils.py` -- `data_prep.py` and
-`predict.py` both import from these rather than from each other.
+`patch_extraction.py`, `tfrecord_utils.py`, and `stac_search.py` (the
+catalog query helper) -- `data_prep.py` and `predict.py` both import from
+these rather than from each other. `stac_search.py` deliberately only
+depends on `geopandas`, not on `build_stac_catalog.py`'s heavier
+`pystac`/`stac-geoparquet`/`antimeridian` toolchain, so the per-tile
+query path stays light.
 
 ## Setup
 
@@ -35,8 +48,13 @@ without an environment change:
 
 | Env | Created from | Used by |
 |---|---|---|
-| `data_prep2` | `environment.yml` | `data_prep.py` |
+| `data_prep2` | `environment.yml` | `data_prep.py`, `build_stac_catalog.py` |
 | `predict_env` | `environment-predict.yml` | `predict.py`, `predict_all_years.py`, `coincident_fire_atl08.py` |
+
+`build_stac_catalog.py`'s extra dependencies (`pystac`, `stac-geoparquet`,
+`antimeridian`) only live in `environment.yml`/`data_prep2` -- it's not
+needed in `predict_env` since `stac_search.py` (what `predict.py`/
+`predict_all_years.py` actually import) only needs `geopandas`.
 
 ```bash
 conda env create -f environment.yml          # creates data_prep2
@@ -94,50 +112,75 @@ python coincident_fire_atl08.py \
   s3://bucket/hls_2019.tif
 ```
 
-### 2. Extract training-data TFRecords
+### 2. Build the STAC catalog
+
+A prerequisite for everything below. Occasionally run, not per-tile --
+rebuild it when the upstream tindexes change (new tiles/years processed).
+
+```bash
+python build_stac_catalog.py \
+  --hls_tindex hls_tindex.csv \
+  --atl08_tindex atl08_tindex.csv \
+  --topo_tindex topo_tindex.csv \
+  --lc_tindex lc_tindex.csv \
+  --tile_grid boreal_tiles.gpkg \
+  --out_dir stac_catalog/
+```
+
+Writes a static catalog (`catalog.json` + one subdirectory per collection)
+and a flattened `items.parquet` to `--out_dir`. Upload both to S3
+afterward (e.g. `aws s3 sync stac_catalog/ s3://bucket/stac_catalog/`) --
+uploading isn't part of this script. Every other script below points its
+`--stac_catalog` argument at the uploaded `items.parquet`; that's the
+actual query target (see `stac_search.py`), not `catalog.json`.
+
+### 3. Extract training-data TFRecords
 
 ```bash
 python data_prep.py \
   --tile_num 3364 \
-  --hls_tindex hls_tindex.csv \
-  --atl08_tindex atl08_tindex.csv \
+  --stac_catalog s3://bucket/stac_catalog/items.parquet \
   --agb \
   --out_dir output/
 ```
 
-`--topo_tindex` defaults to a shared MAAP S3 tindex, so it can usually be
-omitted. `--rh` (default `h_canopy`), `--patch_size` (128), `--overlap`
-(32), and `--ndval_thresh` (0.30) are also overridable.
+`--rh` (default `h_canopy`), `--patch_size` (128), `--overlap` (32), and
+`--ndval_thresh` (0.30) are also overridable.
 
 ```bash
 # wrapper
 ./run-data-prep.sh \
   --tile_num 3364 \
-  --hls_tindex hls_tindex.csv \
-  --atl08_tindex atl08_tindex.csv \
+  --stac_catalog s3://bucket/stac_catalog/items.parquet \
   --agb
 ```
 
-### 3. Predict a single HLS scene
+### 4. Predict a single HLS scene/year
 
 ```bash
 python predict.py \
-  --hls_path hls_2023.tif \
-  --topo_path topo.tif \
-  --lc_path landcover.tif \
+  --tile_num 3364 \
+  --year 2023 \
+  --stac_catalog s3://bucket/stac_catalog/items.parquet \
   --model_path model.keras \
-  --out_raster_path pred_agb_2023.tif \
+  --out_raster_path pred_agb_3364_2023.tif \
   --agb
 ```
 
+STAC-resolved HLS/topo/land-cover assets are `s3://` hrefs, so `predict.py`
+downloads each one locally before processing (`--input_dir`, default
+`input`) rather than assuming the caller already has a local file --
+`predict_all_years.py` does the same, reusing `predict.py`'s
+`download_to_local()` helper.
+
 ```bash
-# wrapper (positional: hls_path topo_path lc_path model_path out_raster_path
+# wrapper (positional: tile_num year stac_catalog model_path out_raster_path
 # patch_size step_size ndval batch_size)
-./run-predict.sh hls_2023.tif topo.tif landcover.tif model.keras \
-  pred_agb_2023.tif 128 100 -9999 64
+./run-predict.sh 3364 2023 s3://bucket/stac_catalog/items.parquet \
+  model.keras pred_agb_3364_2023.tif 128 100 -9999 64
 ```
 
-### 4. Predict across every available year for a tile
+### 5. Predict across every available year for a tile
 
 This is the algorithm actually registered on DPS
 (`register_predict_all_years.yml`).
@@ -145,9 +188,7 @@ This is the algorithm actually registered on DPS
 ```bash
 python predict_all_years.py \
   --tile_num 3364 \
-  --hls_tindex hls_tindex.csv \
-  --topo_path topo.tif \
-  --lc_path landcover.tif \
+  --stac_catalog s3://bucket/stac_catalog/items.parquet \
   --model_path model.keras \
   --agb
 ```
@@ -156,9 +197,7 @@ python predict_all_years.py \
 # wrapper
 ./run-predict-all-years.sh \
   --tile_num 3364 \
-  --hls_tindex hls_tindex.csv \
-  --topo_path topo.tif \
-  --lc_path landcover.tif \
+  --stac_catalog s3://bucket/stac_catalog/items.parquet \
   --model_path model.keras \
   --agb
 ```
