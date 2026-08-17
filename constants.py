@@ -22,3 +22,11 @@ class Consts:
     MAX_SLOPE = 90.0
     MAX_HEIGHT = 100.0  # in meters
     MAX_AGB = 500.0  # in MG/ha
+
+    # STAC collection ids, shared between build_stac_catalog.py (which builds them)
+    # and data_prep.py/stac_search.py (which query them). Kept here rather than in
+    # build_stac_catalog.py so data_prep.py's import graph doesn't have to pull in
+    # pystac/stac-geoparquet/antimeridian just for these three strings.
+    HLS_COLLECTION = 'boreal-hls-composite'
+    ATL08_COLLECTION = 'boreal-atl08-labels'
+    TOPO_COLLECTION = 'boreal-topo-stack'

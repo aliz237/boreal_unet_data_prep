@@ -28,7 +28,17 @@ dependencies = [
 
 [project.optional-dependencies]
 # Mirrors environment.yml (conda env: data_prep2), used for training-data extraction.
-train = ["tensorflow[and-cuda]==2.18.0"]
+# pystac/stac-geoparquet/antimeridian/shapely are only imported by build_stac_catalog.py
+# (the STAC catalog bootstrap script); data_prep.py's runtime query path only needs
+# geopandas (already a core dependency), so these stay scoped to `train` rather than
+# core dependencies.
+train = [
+    "tensorflow[and-cuda]==2.18.0",
+    "pystac",
+    "stac-geoparquet",
+    "antimeridian",
+    "shapely",
+]
 # Mirrors environment-predict.yml (conda env: predict_env), used for inference and the
 # coincident-fire-atl08 DPS algorithm. Also pinned to the CUDA build, kept identical to
 # `train`, even though DPS's current predict workers are CPU-only -- tensorflow[and-cuda]
@@ -48,6 +58,8 @@ py-modules = [
     "raster_utils",
     "atl08_utils",
     "patch_extraction",
+    "stac_search",
+    "build_stac_catalog",
     "data_prep",
     "predict",
     "predict_all_years",

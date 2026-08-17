@@ -7,9 +7,7 @@ AGB=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tile_num)     TILE_NUM="$2"; shift 2 ;;
-    --hls_tindex)   HLS_TINDEX="$2"; shift 2 ;;
-    --atl08_tindex) ATL08_TINDEX="$2"; shift 2 ;;
-    --topo_tindex)  TOPO_TINDEX="$2"; shift 2 ;; # Everything else below is optional
+    --stac_catalog) STAC_CATALOG="$2"; shift 2 ;; # Everything else below is optional
     --patch_size)   PATCH_SIZE="$2"; shift 2 ;; # Defaults at 128
     --overlap)      OVERLAP="$2"; shift 2 ;; # Default of 32
     --rh)           RH="$2"; shift 2 ;; # Default of h_canopy
@@ -30,14 +28,9 @@ fi
 CMD=(
   conda run --live-stream --name data_prep2 python "${basedir}/data_prep.py"
   --tile_num "$TILE_NUM"
-  --hls_tindex "$HLS_TINDEX"
-  --atl08_tindex "$ATL08_TINDEX"
+  --stac_catalog "$STAC_CATALOG"
   --out_dir "$OUT_DIR"
 )
-
-if [[ -n "${TOPO_TINDEX:-}" ]]; then
-    CMD+=(--topo_tindex "$TOPO_TINDEX")
-fi
 
 if [[ -n "${PATCH_SIZE:-}" ]]; then
     CMD+=(--patch_size "$PATCH_SIZE")

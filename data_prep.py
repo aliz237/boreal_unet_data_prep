@@ -2,12 +2,11 @@ import argparse
 import logging
 from pathlib import Path
 
-import pandas as pd
-
 from atl08_utils import atl08_to_raster
 from constants import Consts
 from patch_extraction import extract_patches_tfrec
 from raster_utils import normalize_bands
+from stac_search import get_single_path, get_year_paths, load_items
 
 logging.basicConfig(
     level=logging.INFO, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
@@ -17,9 +16,7 @@ logger = logging.getLogger(__name__)
 
 def create_training_dataset(
     tile_num,
-    atl08_tindex,
-    hls_tindex,
-    topo_tindex,
+    stac_catalog,
     patch_size=128,
     overlap=32,
     rh='h_canopy',
@@ -35,20 +32,10 @@ def create_training_dataset(
     #         return None
     # else:
     #     mask_path = None
-    a = pd.read_csv(atl08_tindex)
-    h = pd.read_csv(hls_tindex)
-    t = pd.read_csv(topo_tindex)
-    atl08_paths = (
-        a[a.tile_num == tile_num][['year', 's3_path']]
-        .set_index('year')
-        .to_dict()['s3_path']
-    )
-    hls_paths = (
-        h[h.tile_num == tile_num][['year', 's3_path']]
-        .set_index('year')
-        .to_dict()['s3_path']
-    )
-    topo_path = t.set_index('tile_num').loc[tile_num, 's3_path']
+    items = load_items(stac_catalog)
+    atl08_paths = get_year_paths(items, Consts.ATL08_COLLECTION, tile_num)
+    hls_paths = get_year_paths(items, Consts.HLS_COLLECTION, tile_num)
+    topo_path = get_single_path(items, Consts.TOPO_COLLECTION, tile_num)
     logger.info(
         'atl08_paths:%s, hls_paths:%s, topo_path:%s', atl08_paths, hls_paths, topo_path
     )
@@ -113,17 +100,17 @@ if __name__ == '__main__':
         description='Creates a tfrecord.gz from patches of HLS, TOPO, and ATL08 for tile_num'
     )
     parse.add_argument('--tile_num', help='boreal tile number', type=int, required=True)
-    parse.add_argument('--hls_tindex', help='HLS tindex path', required=True)
+    parse.add_argument(
+        '--stac_catalog',
+        help=(
+            'path to the STAC items GeoParquet table (local path or s3://), built '
+            'by build_stac_catalog.py'
+        ),
+        required=True,
+    )
     parse.add_argument(
         '--fire_path', help='fire polygon path', required=False, default=''
     )
-    parse.add_argument(
-        '--topo_tindex',
-        help='topo tindex path',
-        required=False,
-        default='s3://maap-ops-workspace/shared/montesano/DPS_tile_lists/run_build_stack_topo/build_stack_v2024_2/CopernicusGLO30/Topo_tindex_master.csv',
-    )
-    parse.add_argument('--atl08_tindex', help='atl08 tindex path', required=True)
     parse.add_argument(
         '--patch_size', help='training image patch size', type=int, default=128
     )
