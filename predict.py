@@ -1,5 +1,16 @@
+import os
+
+# Must be set before `import tensorflow` -- TF's C++ backend reads this at import
+# time to decide how noisy its own startup logging (CUDA/oneDNN, etc.) is. '2'
+# filters INFO and WARNING, leaving ERROR/FATAL visible. setdefault so an externally
+# set value (e.g. from the shell) isn't clobbered. This poisons E402 for every
+# import below; see the file-level suppression a few lines down.
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
+
+# ruff: noqa: E402
 import argparse
 import logging
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -18,12 +29,18 @@ logging.basicConfig(
     level=logging.INFO, format='%(asctime)s - %(levelname)s - %(name)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+tf.get_logger().setLevel('ERROR')  # suppress TF's own Python-side INFO/WARNING logs
 logger.info('Devices: %s', tf.config.list_physical_devices())
 
 
 def download_to_local(s3_path, local_dir='input'):
-    """Downloads an s3:// asset to local_dir and returns the local path (a no-op,
-    returning the path unchanged, if it isn't an s3:// URL).
+    """Downloads an s3:// asset to local_dir and returns (local_path, was_downloaded).
+
+    was_downloaded is False (a no-op passthrough) when s3_path isn't an s3:// URL --
+    callers must only delete local_path when was_downloaded is True, so a
+    caller-supplied local file (e.g. in tests, or a local --stac_catalog) never gets
+    deleted out from under them. Prefer the downloaded_locally() context manager
+    below over calling this directly, since it handles that check for you.
 
     predict_raster()'s raster I/O (normalize_bands, align_if_needed, rasterio.open)
     needs local filesystem paths -- e.g. normalize_bands writes its output alongside
@@ -40,13 +57,29 @@ def download_to_local(s3_path, local_dir='input'):
     land-cover moved onto the STAC catalog too.
     """
     if not str(s3_path).startswith('s3://'):
-        return str(s3_path)
+        return str(s3_path), False
     Path(local_dir).mkdir(parents=True, exist_ok=True)
     local_path = str(Path(local_dir) / Path(s3_path).name)
     s3 = s3fs.S3FileSystem(anon=False, client_kwargs={'region_name': 'us-west-2'})
     logger.info('Downloading %s', s3_path)
     s3.get_file(s3_path, local_path)
-    return local_path
+    return local_path, True
+
+
+@contextmanager
+def downloaded_locally(s3_path, local_dir='input'):
+    """Wraps download_to_local(): yields the local path, and deletes it on exit if a
+    download actually happened. The original raw download's path is otherwise lost
+    once predict_raster() reassigns its own hls_path/topo_path locals to the
+    normalized/aligned derivatives it creates -- cleaning up here, on the caller's
+    copy of the path, is what actually removes it from disk.
+    """
+    local_path, was_downloaded = download_to_local(s3_path, local_dir)
+    try:
+        yield local_path
+    finally:
+        if was_downloaded:
+            Path(local_path).unlink(missing_ok=True)
 
 
 def predict_raster(
@@ -242,19 +275,20 @@ if __name__ == '__main__':
     topo_path = get_single_path(items, Consts.TOPO_COLLECTION, args.tile_num)
     lc_path = get_single_path(items, Consts.LC_COLLECTION, args.tile_num)
 
-    hls_path = download_to_local(hls_path, args.input_dir)
-    topo_path = download_to_local(topo_path, args.input_dir)
-    lc_path = download_to_local(lc_path, args.input_dir)
-
-    predict_raster(
-        hls_path=hls_path,
-        topo_path=topo_path,
-        lc_path=lc_path,
-        out_raster_path=args.out_raster_path,
-        model_path=args.model_path,
-        patch_size=args.patch_size,
-        step_size=args.step_size,
-        ndval=args.ndval,
-        batch_size=args.batch_size,
-        agb=args.agb,
-    )
+    with (
+        downloaded_locally(hls_path, args.input_dir) as hls_path,
+        downloaded_locally(topo_path, args.input_dir) as topo_path,
+        downloaded_locally(lc_path, args.input_dir) as lc_path,
+    ):
+        predict_raster(
+            hls_path=hls_path,
+            topo_path=topo_path,
+            lc_path=lc_path,
+            out_raster_path=args.out_raster_path,
+            model_path=args.model_path,
+            patch_size=args.patch_size,
+            step_size=args.step_size,
+            ndval=args.ndval,
+            batch_size=args.batch_size,
+            agb=args.agb,
+        )

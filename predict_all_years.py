@@ -2,7 +2,7 @@ import argparse
 import logging
 
 from constants import Consts
-from predict import download_to_local, predict_raster
+from predict import downloaded_locally, predict_raster
 from stac_search import get_single_path, get_year_paths, load_items
 
 logging.basicConfig(
@@ -33,37 +33,38 @@ def predict_raster_all_years(
     logger.info(
         'hls_paths: %s, topo_path: %s, lc_path: %s', hls_paths, topo_path, lc_path
     )
-    # topo/lc don't vary by year, so download once and reuse across the loop below
-    topo_path = download_to_local(topo_path, input_dir)
-    lc_path = download_to_local(lc_path, input_dir)
+    # topo/lc don't vary by year, so download once and reuse across the loop below,
+    # cleaning up only after every year has been processed
+    with (
+        downloaded_locally(topo_path, input_dir) as topo_path,
+        downloaded_locally(lc_path, input_dir) as lc_path,
+    ):
+        for year, s3_path in sorted(hls_paths.items()):
+            try:
+                with downloaded_locally(s3_path, input_dir) as local_path:
+                    logger.info('Running predict for: %s, %s', local_path, year)
+                    out_raster_path = (
+                        f'{output_dir}/UNet_{Y}_m4_{patch_size}_{tile_num}_{year}.tif'
+                    )
+                    predict_raster(
+                        hls_path=local_path,
+                        topo_path=topo_path,
+                        lc_path=lc_path,
+                        out_raster_path=out_raster_path,
+                        model_path=model_path,
+                        patch_size=patch_size,
+                        step_size=step_size,
+                        ndval=ndval,
+                        batch_size=batch_size,
+                        agb=agb,
+                        nodata_thresh=nodata_thresh,
+                        max_na_block=max_na_block,
+                    )
 
-    for year, s3_path in sorted(hls_paths.items()):
-        try:
-            local_path = download_to_local(s3_path, input_dir)
-
-            logger.info('Running predict for: %s, %s', local_path, year)
-            out_raster_path = (
-                f'{output_dir}/UNet_{Y}_m4_{patch_size}_{tile_num}_{year}.tif'
-            )
-            predict_raster(
-                hls_path=local_path,
-                topo_path=topo_path,
-                lc_path=lc_path,
-                out_raster_path=out_raster_path,
-                model_path=model_path,
-                patch_size=patch_size,
-                step_size=step_size,
-                ndval=ndval,
-                batch_size=batch_size,
-                agb=agb,
-                nodata_thresh=nodata_thresh,
-                max_na_block=max_na_block,
-            )
-
-        except Exception:
-            logger.exception(
-                'Failed to process tile %s, year %s (%s)', tile_num, year, s3_path
-            )
+            except Exception:
+                logger.exception(
+                    'Failed to process tile %s, year %s (%s)', tile_num, year, s3_path
+                )
 
 
 if __name__ == '__main__':
