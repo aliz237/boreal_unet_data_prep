@@ -3,7 +3,8 @@
 Training-data extraction and inference pipeline for predicting boreal forest
 canopy height and aboveground biomass (AGB) from HLS imagery, ICESat-2 ATL08
 LiDAR, and topography, using a U-Net. Built to run at tile-by-tile scale, both
-locally and as registered algorithms on NASA MAAP's DPS job runner.
+locally and as registered algorithms on NASA MAAP's DPS job runner. Below we see
+the model predictions in Alaska for the year 2024.
 
 ![Alaska AGB preview](images/AK_AGB_2024_viridis.png)
 
