@@ -75,6 +75,27 @@ class TestRasterBounds:
         )
         assert open_raster_bounds(str(path)) == (100.0, 35.0, 120.0, 50.0)
 
+    def test_open_raster_bounds_works_even_when_gdal_open_would_fail(
+        self, tmp_path, monkeypatch
+    ):
+        # Regression test: gdal.Open() doesn't reliably handle s3:// paths -- it
+        # returns None instead of raising, which used to crash open_raster_bounds
+        # with an opaque AttributeError. It's since been rewritten to use rasterio,
+        # which already handles the same s3:// paths correctly everywhere else in
+        # this pipeline. Simulate that exact gdal.Open failure mode here and confirm
+        # open_raster_bounds no longer depends on it at all.
+        path = write_gdal_gtiff(
+            tmp_path / 'ref.tif',
+            width=10,
+            height=5,
+            xmin=100.0,
+            ymax=50.0,
+            xres=2.0,
+            yres=3.0,
+        )
+        monkeypatch.setattr('raster_utils.gdal.Open', lambda *a, **k: None)
+        assert open_raster_bounds(str(path)) == (100.0, 35.0, 120.0, 50.0)
+
 
 class TestNormalizeBands:
     def test_applies_norm_only_to_valid_pixels_and_selects_bands(self, tmp_path):

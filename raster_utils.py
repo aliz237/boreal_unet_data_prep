@@ -90,11 +90,10 @@ def raster_bounds(ds):
 
 
 def open_raster_bounds(raster_path):
-    """Opens raster_path with gdal and returns its (xmin, ymin, xmax, ymax) bounds."""
-    ds = gdal.Open(raster_path)
-    bounds = raster_bounds(ds)
-    ds = None
-    return bounds
+    """Opens raster_path and returns its (xmin, ymin, xmax, ymax) bounds."""
+    with rasterio.open(raster_path) as src:
+        b = src.bounds
+        return (b.left, b.bottom, b.right, b.top)
 
 
 def align_if_needed(hls_path, topo_path, lc_path):
