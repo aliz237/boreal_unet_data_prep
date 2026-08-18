@@ -5,6 +5,8 @@ canopy height and aboveground biomass (AGB) from HLS imagery, ICESat-2 ATL08
 LiDAR, and topography, using a U-Net. Built to run at tile-by-tile scale, both
 locally and as registered algorithms on NASA MAAP's DPS job runner.
 
+![Alaska AGB preview](images/AK_AGB_2024_viridis.png)
+
 ## Pipeline stages
 
 1. **`coincident_fire_atl08.py`** *(optional)* -- finds fire polygons that
