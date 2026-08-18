@@ -67,6 +67,12 @@ def normalize_bands(
             validmask &= mask == 1
         if meta['norm']:
             arr[i][validmask] = meta['norm'](arr[i][validmask])
+        # regardless of whether this band has a norm function: everywhere outside
+        # validmask (originally nodata, or masked out by mask_path) must read back
+        # as nodata. Without this, a masked-out pixel in a norm=None band (most HLS
+        # bands) would keep its raw, non-nodata value -- silently defeating
+        # mask_path entirely for those bands.
+        arr[i][~validmask] = -9999
 
     profile.update({'dtype': 'float32', 'count': len(selected), 'nodata': -9999})
     with rasterio.open(out_raster_path, 'w', **profile) as dst:

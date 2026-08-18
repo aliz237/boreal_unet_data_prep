@@ -119,3 +119,46 @@ class TestNormalizeBands:
             np.testing.assert_array_equal(
                 src.read(1), np.full((3, 3), 3.0, dtype='float32')
             )
+
+    def test_mask_path_nulls_out_pixels_even_without_norm(self, tmp_path):
+        # Regression case: a band with norm=None (most HLS bands) must still get
+        # masked-out pixels set to nodata -- previously the mask only gated which
+        # pixels got the norm() function applied, so for norm=None bands masking
+        # had no effect at all.
+        a = np.full((4, 4), 10.0, dtype='float32')
+        in_path = write_gtiff(tmp_path / 'in.tif', np.stack([a]))
+        out_path = tmp_path / 'out.tif'
+
+        mask = np.zeros((4, 4), dtype='float32')
+        mask[0:2, :] = 1  # top half "in fire", bottom half not
+        mask_path = write_gtiff(tmp_path / 'mask.tif', np.stack([mask]))
+
+        band_defs = {'a': {'num': 1, 'norm': None}}
+        normalize_bands(
+            str(in_path), str(out_path), band_defs, ['a'], mask_path=str(mask_path)
+        )
+
+        with rasterio.open(out_path) as src:
+            out = src.read(1)
+        assert (out[0:2, :] == 10.0).all()  # inside mask: untouched (norm=None)
+        assert (out[2:4, :] == -9999.0).all()  # outside mask: nulled to nodata
+
+    def test_mask_path_nulls_out_pixels_with_norm(self, tmp_path):
+        b = np.full((4, 4), 50.0, dtype='float32')
+        in_path = write_gtiff(tmp_path / 'in.tif', np.stack([b]))
+        out_path = tmp_path / 'out.tif'
+
+        mask = np.zeros((4, 4), dtype='float32')
+        mask[0:2, :] = 1
+        mask_path = write_gtiff(tmp_path / 'mask.tif', np.stack([mask]))
+
+        band_defs = {'b': {'num': 1, 'norm': lambda x: x / 100.0}}
+        normalize_bands(
+            str(in_path), str(out_path), band_defs, ['b'], mask_path=str(mask_path)
+        )
+
+        with rasterio.open(out_path) as src:
+            out = src.read(1)
+        assert (out[0:2, :] == 0.5).all()  # inside mask: normalized
+        # outside mask: nulled, not left as the un-normalized raw value (50.0)
+        assert (out[2:4, :] == -9999.0).all()

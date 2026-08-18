@@ -117,18 +117,14 @@ def create_fire_mask(fire_path, hls_path, year):
     if f_df.shape[0] == 0:
         return None
 
-    if fire_path.startswith('s3'):
-        # save locally to DPS input dir so gdal rasterize works
-        local_fire_path = Path('input') / Path(fire_path).name
-        out_path = local_fire_path.with_suffix('.tif')
-        f_df.to_file(str(local_fire_path))
-        fire_path = local_fire_path
-    else:
-        out_path = Path(fire_path).with_suffix('.tif')
+    local_fire_path = Path('input') / f'{Path(fire_path).stem}_{year}.gpkg'
+    local_fire_path.parent.mkdir(parents=True, exist_ok=True)
+    f_df.to_file(str(local_fire_path))
+    out_path = local_fire_path.with_suffix('.tif')
 
     ds = gdal.Rasterize(
         str(out_path),
-        str(fire_path),
+        str(local_fire_path),
         format='GTiff',
         initValues=0,
         burnValues=[1],
@@ -139,4 +135,5 @@ def create_fire_mask(fire_path, hls_path, year):
         creationOptions=['COMPRESS=LZW'],
     )
     ds = None
+    local_fire_path.unlink(missing_ok=True)
     return out_path

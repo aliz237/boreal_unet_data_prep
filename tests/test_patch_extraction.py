@@ -97,3 +97,50 @@ def test_drops_patch_when_hls_coverage_is_too_sparse(tmp_path):
 
     assert not out_path.exists()
     assert list(tmp_path.glob('nohls_16_0*.tfrecord.gz')) == []
+
+
+def test_fire_years_none_processes_every_pair(tmp_path):
+    # default (non-fire) behavior with 3 years: both consecutive pairs produce a
+    # record, for contrast with the fire_years-gated test below.
+    hls_2019, atl08_2019, topo_arr = _write_year(tmp_path, 2019)
+    hls_2020, atl08_2020, _ = _write_year(tmp_path, 2020)
+    hls_2021, atl08_2021, _ = _write_year(tmp_path, 2021)
+    topo_path = write_gtiff(tmp_path / 'topo.tif', topo_arr)
+
+    out_path = Path(tmp_path / 'nofire_16_0.tfrecord.gz')
+    extract_patches_tfrec(
+        hls_paths={2019: str(hls_2019), 2020: str(hls_2020), 2021: str(hls_2021)},
+        atl08_paths={2019: str(atl08_2019), 2020: str(atl08_2020), 2021: str(atl08_2021)},
+        topo_path=str(topo_path),
+        tfrecord_path=out_path,
+        patch_size=PATCH_SIZE,
+        overlap=0,
+    )
+
+    written = list(tmp_path.glob('nofire_16_0_*.tfrecord.gz'))
+    assert len(written) == 1
+    assert written[0].name.endswith('_2.tfrecord.gz')  # both pairs produced a record
+
+
+def test_fire_years_skips_pairs_where_neither_year_has_fire(tmp_path):
+    hls_2019, atl08_2019, topo_arr = _write_year(tmp_path, 2019)
+    hls_2020, atl08_2020, _ = _write_year(tmp_path, 2020)
+    hls_2021, atl08_2021, _ = _write_year(tmp_path, 2021)
+    topo_path = write_gtiff(tmp_path / 'topo.tif', topo_arr)
+
+    out_path = Path(tmp_path / 'fire_16_0.tfrecord.gz')
+    extract_patches_tfrec(
+        hls_paths={2019: str(hls_2019), 2020: str(hls_2020), 2021: str(hls_2021)},
+        atl08_paths={2019: str(atl08_2019), 2020: str(atl08_2020), 2021: str(atl08_2021)},
+        topo_path=str(topo_path),
+        tfrecord_path=out_path,
+        patch_size=PATCH_SIZE,
+        overlap=0,
+        # only 2019 has fire: (2019, 2020) is kept (2019 has fire), (2020, 2021) is
+        # skipped outright (neither year has fire).
+        fire_years={2019},
+    )
+
+    written = list(tmp_path.glob('fire_16_0_*.tfrecord.gz'))
+    assert len(written) == 1
+    assert written[0].name.endswith('_1.tfrecord.gz')

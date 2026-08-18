@@ -20,6 +20,7 @@ def extract_patches_tfrec(
     ndval=-9999,
     overlap=32,
     ndval_thresh=0.30,
+    fire_years=None,  # set of years with a fire mask baked into hls_paths, or None
 ):
     years = sorted(list(hls_paths.keys()))
     step_size = patch_size - overlap
@@ -31,6 +32,11 @@ def extract_patches_tfrec(
     )
     all_dims = set()
     for t1, t2 in zip(years[:-1], years[1:]):
+        if fire_years is not None and t1 not in fire_years and t2 not in fire_years:
+            # fire-augmentation mode: a pair only has a chance of producing patches
+            # if at least one of its years has fire coverage
+            logger.info('neither %s nor %s has fire coverage, skipping pair', t1, t2)
+            continue
         logger.info('t1:%s, t2:%s', t1, t2)
         with (
             rasterio.open(hls_paths[t1]) as h1,

@@ -2,7 +2,7 @@ import argparse
 import logging
 from pathlib import Path
 
-from atl08_utils import atl08_to_raster
+from atl08_utils import atl08_to_raster, create_fire_mask
 from constants import Consts
 from patch_extraction import extract_patches_tfrec
 from raster_utils import normalize_bands
@@ -25,13 +25,6 @@ def create_training_dataset(
     out_dir='output',
     ndval_thresh=0.30,
 ):
-    # if fire_path:
-    #     mask_path = create_fire_mask(fire_path, hls_path, year)
-    #     if mask_path is None:
-    #         logger.info('no fires intersect atl08-%s, no tfrecords will be created.', year)
-    #         return None
-    # else:
-    #     mask_path = None
     items = load_items(stac_catalog)
     atl08_paths = get_year_paths(items, Consts.ATL08_COLLECTION, tile_num)
     hls_paths = get_year_paths(items, Consts.HLS_COLLECTION, tile_num)
@@ -41,6 +34,8 @@ def create_training_dataset(
     )
     hls_norm_paths = dict()
     atl08_raster_paths = dict()
+    fire_mask_paths = dict()
+    fire_years = set() if fire_path else None
     topo_norm_path = None
 
     try:
@@ -64,12 +59,30 @@ def create_training_dataset(
                 rh=rh,
                 agb=agb,
             )
+
+            # Fire-augmentation: mask this year's HLS to only its own fire polygons
+            # (via normalize_bands' mask_path), so only patches overlapping fire
+            # have a chance of passing extract_patches_tfrec's nodata-fraction
+            # check. A year with no matching fire is left fully unmasked, so it can
+            # still serve as a clean before/after baseline for an adjacent fire
+            # year -- extract_patches_tfrec's fire_years drops a (t1, t2) pair
+            # outright only when *neither* year has fire coverage.
+            mask_path = None
+            if fire_path:
+                mask_path = create_fire_mask(fire_path, hls_paths[year], year)
+                if mask_path is not None:
+                    fire_mask_paths[year] = mask_path
+                    fire_years.add(year)
+                else:
+                    logger.info('no fires intersect atl08-%s for tile %s', year, tile_num)
+
             logger.info('Normalizing HLS %s', year)
             hls_norm_paths[year] = normalize_bands(
                 hls_paths[year],
                 str(Path('/tmp') / (Path(hls_paths[year]).stem + '_norm.tif')),
                 Consts.HLS_BANDS,
                 ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'nbr'],
+                mask_path=mask_path,
             )
 
         logger.info('Extracting patches for tile: %s', tile_num)
@@ -83,6 +96,7 @@ def create_training_dataset(
             patch_size=patch_size,
             overlap=overlap,
             ndval_thresh=ndval_thresh,
+            fire_years=fire_years,
         )
     finally:
         logger.info('cleaning up temp rasters ...')
@@ -93,6 +107,8 @@ def create_training_dataset(
                 Path(hls_norm_paths[year]).unlink(missing_ok=True)
             if year in atl08_raster_paths:
                 Path(atl08_raster_paths[year]).unlink(missing_ok=True)
+            if year in fire_mask_paths:
+                Path(fire_mask_paths[year]).unlink(missing_ok=True)
 
 
 if __name__ == '__main__':
