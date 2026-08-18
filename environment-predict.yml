@@ -9,5 +9,6 @@ dependencies:
     - geopandas=1
     - rasterio=1.5
     - s3fs=2026.4
+    - pyarrow
     - pip:
         - tensorflow[and-cuda]==2.18.0
