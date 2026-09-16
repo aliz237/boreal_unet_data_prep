@@ -4,7 +4,7 @@ from pathlib import Path
 
 from atl08_utils import atl08_to_raster, create_fire_mask
 from constants import Consts
-from patch_extraction import extract_patches_tfrec
+from patch_extraction import extract_patches_tfrec, extract_patches_tfrec_per_year
 from raster_utils import normalize_bands
 from stac_search import get_single_path, get_year_paths, load_items
 
@@ -24,6 +24,7 @@ def create_training_dataset(
     agb=True,
     out_dir='output',
     ndval_thresh=0.30,
+    pairwise=True,
 ):
     items = load_items(stac_catalog)
     atl08_paths = get_year_paths(items, Consts.ATL08_COLLECTION, tile_num)
@@ -86,12 +87,14 @@ def create_training_dataset(
             )
 
         logger.info('Extracting patches for tile: %s', tile_num)
-        extract_patches_tfrec(
+        extract_fn = extract_patches_tfrec if pairwise else extract_patches_tfrec_per_year
+        mode_suffix = 'pairwise' if pairwise else 'peryear'
+        extract_fn(
             hls_norm_paths,
             atl08_raster_paths,
             topo_norm_path,
             tfrecord_path=Path(
-                f'{out_dir}/{tile_num}_2019_2024_{patch_size}_{overlap}.tfrecord.gz'
+                f'{out_dir}/{tile_num}_2019_2024_{patch_size}_{overlap}_{mode_suffix}.tfrecord.gz'
             ),
             patch_size=patch_size,
             overlap=overlap,
@@ -148,6 +151,16 @@ if __name__ == '__main__':
         help='Drop the training patch if HLS nodata %% > ndval_thresh',
         type=float,
         default=0.30,
+    )
+    parse.add_argument(
+        '--pairwise',
+        help=(
+            'Stack consecutive years into (2, H, W, D) before/after patches '
+            '(default). Pass --no-pairwise to instead write one (H, W, D) '
+            'record per year, independently.'
+        ),
+        action=argparse.BooleanOptionalAction,
+        default=True,
     )
 
     args = parse.parse_args()
