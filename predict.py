@@ -93,8 +93,8 @@ def predict_raster(
     ndval=-9999,
     batch_size=64,
     agb=False,
-    max_na_block=3,
-    nodata_thresh=0.05,
+    max_na_block=1000,
+    nodata_thresh=0.99,
 ):
     batch = []
     ulxy = []
@@ -266,6 +266,18 @@ if __name__ == '__main__':
         help='if true predict agb, o.w predict canopy height',
         action='store_true',
     )
+    parse.add_argument(
+        '--max_na_block',
+        help='max contiguous nodata block size (pixels) allowed before gapfill fails',
+        type=int,
+        default=1000,
+    )
+    parse.add_argument(
+        '--nodata_thresh',
+        help='max fraction of nodata pixels allowed in a patch before gapfill fails',
+        type=float,
+        default=0.99,
+    )
 
     args = parse.parse_args()
     logger.info(args)
@@ -291,4 +303,6 @@ if __name__ == '__main__':
             ndval=args.ndval,
             batch_size=args.batch_size,
             agb=args.agb,
+            max_na_block=args.max_na_block,
+            nodata_thresh=args.nodata_thresh,
         )
