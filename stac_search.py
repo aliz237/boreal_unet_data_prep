@@ -16,15 +16,11 @@ def _asset_href(assets, asset_key='data'):
 
 
 def get_year_paths(items, collection, tile_num):
-    """Returns {year: asset_href} for every Item in `collection` matching `tile_num`.
-
-    Mirrors the {year: s3_path} shape create_training_dataset previously built from
-    a tindex CSV via `.set_index('year').to_dict()['s3_path']`.
-    """
+    """Returns {year: asset_href} for every Item in `collection` matching `tile_num`."""
     matches = items[(items['collection'] == collection) & (items['tile_num'] == tile_num)]
     # `year` comes back as float64 from the GeoParquet round-trip (other collections'
     # items have no `year` property, so the shared column is NaN-mixed); cast back to
-    # int to match the {int: str} shape create_training_dataset expects.
+    # int for a clean {int: str} mapping.
     return {int(row.year): _asset_href(row.assets) for row in matches.itertuples()}
 
 

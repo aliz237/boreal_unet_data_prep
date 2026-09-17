@@ -78,12 +78,9 @@ class TestRasterBounds:
     def test_open_raster_bounds_works_even_when_gdal_open_would_fail(
         self, tmp_path, monkeypatch
     ):
-        # Regression test: gdal.Open() doesn't reliably handle s3:// paths -- it
-        # returns None instead of raising, which used to crash open_raster_bounds
-        # with an opaque AttributeError. It's since been rewritten to use rasterio,
-        # which already handles the same s3:// paths correctly everywhere else in
-        # this pipeline. Simulate that exact gdal.Open failure mode here and confirm
-        # open_raster_bounds no longer depends on it at all.
+        # gdal.Open() doesn't reliably handle s3:// paths -- it returns None instead
+        # of raising. Simulate that failure and confirm open_raster_bounds (which
+        # uses rasterio instead) doesn't depend on gdal.Open's result.
         path = write_gdal_gtiff(
             tmp_path / 'ref.tif',
             width=10,
@@ -142,10 +139,8 @@ class TestNormalizeBands:
             )
 
     def test_mask_path_nulls_out_pixels_even_without_norm(self, tmp_path):
-        # Regression case: a band with norm=None (most HLS bands) must still get
-        # masked-out pixels set to nodata -- previously the mask only gated which
-        # pixels got the norm() function applied, so for norm=None bands masking
-        # had no effect at all.
+        # A band with norm=None (most HLS bands) must still get masked-out pixels
+        # set to nodata, even though the mask never runs through norm().
         a = np.full((4, 4), 10.0, dtype='float32')
         in_path = write_gtiff(tmp_path / 'in.tif', np.stack([a]))
         out_path = tmp_path / 'out.tif'

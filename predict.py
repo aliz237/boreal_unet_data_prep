@@ -34,27 +34,12 @@ logger.info('Devices: %s', tf.config.list_physical_devices())
 
 
 def download_to_local(s3_path, local_dir='input'):
-    """Downloads an s3:// asset to local_dir and returns (local_path, was_downloaded).
+    """Downloads an s3:// asset to local_dir, returning (local_path, was_downloaded).
 
-    was_downloaded is False (a no-op passthrough) when s3_path isn't an s3:// URL --
-    callers must only delete local_path when was_downloaded is True, so a
-    caller-supplied local file (e.g. in tests, or a local --stac_catalog) never gets
-    deleted out from under them. Prefer the downloaded_locally() context manager
-    below over calling this directly, since it handles that check for you.
-
-    predict_raster()'s raster I/O (normalize_bands, align_if_needed, rasterio.open)
-    needs local filesystem paths -- e.g. normalize_bands writes its output alongside
-    the input via `path.replace('.tif', '_norm.tif')`, which isn't meaningful for an
-    s3:// href. STAC-resolved asset hrefs are always s3:// URLs, so every caller must
-    materialize them locally first.
-
-    This is an explicit step here rather than relying on DPS's automatic single-file
-    "file input" staging (as topo/land-cover paths used to, before the STAC
-    migration): that only works cleanly for one fixed file per input. HLS needs a
-    different file per year, which can't be expressed as a fixed DPS file input
-    without editing the registration YAML every time a new year is processed -- the
-    same reason predict_all_years.py already downloaded HLS this way before topo/
-    land-cover moved onto the STAC catalog too.
+    was_downloaded is False for a non-s3:// path (returned unchanged) -- callers must
+    check it before deleting local_path, so a caller-supplied local file never gets
+    deleted out from under them. Prefer downloaded_locally() below, which handles
+    that check for you.
     """
     if not str(s3_path).startswith('s3://'):
         return str(s3_path), False
