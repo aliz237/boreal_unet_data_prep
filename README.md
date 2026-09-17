@@ -160,13 +160,20 @@ python data_prep.py \
 
 ### 4. Predict a single HLS scene/year
 
+`--tile_num` takes one or more tile numbers; with more than one, tiles are
+predicted in parallel across `--n_threads` threads (default 4), and each
+tile's output gets its own path -- `--out_raster_path` is suffixed with the
+tile number (`pred_agb_2023.tif` -> `pred_agb_2023_3364.tif`). With a single
+tile, `--out_raster_path` is used as given.
+
 ```bash
 python predict.py \
-  --tile_num 3364 \
+  --tile_num 3364 3365 \
   --year 2023 \
   --stac_catalog s3://bucket/stac_catalog/items.parquet \
   --model_path model.keras \
-  --out_raster_path pred_agb_3364_2023.tif \
+  --out_raster_path pred_agb_2023.tif \
+  --n_threads 4 \
   --agb
 ```
 
@@ -177,13 +184,13 @@ downloads each one locally before processing (`--input_dir`, default
 `download_to_local()` helper.
 
 ```bash
-# wrapper
+# wrapper (--tile_num is a single comma-separated string here, e.g. "3364,3365")
 ./run-predict.sh \
-  --tile_num 3364 \
+  --tile_num 3364,3365 \
   --year 2023 \
   --stac_catalog s3://bucket/stac_catalog/items.parquet \
   --model_path model.keras \
-  --out_raster_path pred_agb_3364_2023.tif \
+  --out_raster_path pred_agb_2023.tif \
   --agb
 ```
 

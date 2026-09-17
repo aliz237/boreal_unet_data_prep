@@ -2,8 +2,13 @@
 set -euo pipefail
 basedir=$(dirname "$(readlink -f "$0")")
 mkdir -p output
+
+# predict.py's --tile_num takes one or more space-separated values; split the
+# comma-separated string this positional arg accepts into that form.
+IFS=',' read -ra TILE_NUMS <<< "${1}"
+
 CMD=(conda run --live-stream --name predict_env python "${basedir}/predict.py"
-      --tile_num "${1}"
+      --tile_num "${TILE_NUMS[@]}"
       --year "${2}"
       --stac_catalog "${3}"
       --model_path "${4}"
@@ -18,6 +23,7 @@ CMD=(conda run --live-stream --name predict_env python "${basedir}/predict.py"
 [[ -n "${11:-}" ]] && CMD+=(--max_na_block "${11}")
 [[ -n "${12:-}" ]] && CMD+=(--nodata_thresh "${12}")
 [[ -n "${13:-}" ]] && CMD+=(--agb)
+[[ -n "${14:-}" ]] && CMD+=(--n_threads "${14}")
 
 echo "${CMD[@]}"
 "${CMD[@]}"

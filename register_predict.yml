@@ -1,4 +1,4 @@
-algorithm_description: Predicts Height or AGB for a single HLS composite year given a model and a STAC catalog of HLS, topo, and land cover assets
+algorithm_description: Predicts Height or AGB for one or more tiles for a single HLS composite year, given a model and a STAC catalog of HLS, topo, and land cover assets
 algorithm_name: boreal_unet_predict_year
 algorithm_version: v1.0
 build_command: boreal_unet_data_prep/build-env-predict.sh
@@ -13,7 +13,7 @@ inputs:
     required: true
   positional:
   - default: ''
-    description: tile number
+    description: comma-separated tile number(s) to predict on, e.g. "3364,3365"
     name: tile_num
     required: true
   - default: ''
@@ -29,7 +29,8 @@ inputs:
     name: model_fn
     required: true
   - default: ''
-    description: output predicted raster path
+    description: output predicted raster path (with multiple tile_num, each tile's
+      output is suffixed with its tile number)
     name: out_raster_path
     required: true
   - default: ''
@@ -63,6 +64,10 @@ inputs:
   - default: ''
     description: predict agb if true
     name: agb
+    required: false
+  - default: ''
+    description: number of tiles to predict on in parallel (default 4)
+    name: n_threads
     required: false
 
 

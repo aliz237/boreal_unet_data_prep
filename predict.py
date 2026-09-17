@@ -10,6 +10,7 @@ os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
 # ruff: noqa: E402
 import argparse
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -202,11 +203,60 @@ def predict_raster(
     Path(topo_path).unlink(missing_ok=True)
 
 
+def predict_tile(
+    tile_num,
+    year,
+    items,
+    model_path,
+    out_raster_path,
+    input_dir='input',
+    patch_size=128,
+    step_size=100,
+    ndval=-9999,
+    batch_size=64,
+    agb=False,
+    max_na_block=1000,
+    nodata_thresh=0.99,
+):
+    """Resolves one tile's STAC-listed assets, downloads them locally, and runs
+    predict_raster() on them.
+    """
+    hls_path = get_year_paths(items, Consts.HLS_COLLECTION, tile_num)[year]
+    topo_path = get_single_path(items, Consts.TOPO_COLLECTION, tile_num)
+    lc_path = get_single_path(items, Consts.LC_COLLECTION, tile_num)
+
+    with (
+        downloaded_locally(hls_path, input_dir) as hls_path,
+        downloaded_locally(topo_path, input_dir) as topo_path,
+        downloaded_locally(lc_path, input_dir) as lc_path,
+    ):
+        predict_raster(
+            hls_path=hls_path,
+            topo_path=topo_path,
+            lc_path=lc_path,
+            out_raster_path=out_raster_path,
+            model_path=model_path,
+            patch_size=patch_size,
+            step_size=step_size,
+            ndval=ndval,
+            batch_size=batch_size,
+            agb=agb,
+            max_na_block=max_na_block,
+            nodata_thresh=nodata_thresh,
+        )
+
+
 if __name__ == '__main__':
     parse = argparse.ArgumentParser(
         description='Predicts a vegetation height raster given a HLS, Slope and unet model'
     )
-    parse.add_argument('--tile_num', help='boreal tile number', type=int, required=True)
+    parse.add_argument(
+        '--tile_num',
+        help='boreal tile number(s) to predict on',
+        type=int,
+        nargs='+',
+        required=True,
+    )
     parse.add_argument(
         '--year', help='HLS composite year to predict on', type=int, required=True
     )
@@ -263,31 +313,48 @@ if __name__ == '__main__':
         type=float,
         default=0.99,
     )
+    parse.add_argument(
+        '--n_threads',
+        help='number of tiles to predict on in parallel',
+        type=int,
+        default=4,
+    )
 
     args = parse.parse_args()
     logger.info(args)
 
     items = load_items(args.stac_catalog)
-    hls_path = get_year_paths(items, Consts.HLS_COLLECTION, args.tile_num)[args.year]
-    topo_path = get_single_path(items, Consts.TOPO_COLLECTION, args.tile_num)
-    lc_path = get_single_path(items, Consts.LC_COLLECTION, args.tile_num)
 
-    with (
-        downloaded_locally(hls_path, args.input_dir) as hls_path,
-        downloaded_locally(topo_path, args.input_dir) as topo_path,
-        downloaded_locally(lc_path, args.input_dir) as lc_path,
-    ):
-        predict_raster(
-            hls_path=hls_path,
-            topo_path=topo_path,
-            lc_path=lc_path,
-            out_raster_path=args.out_raster_path,
-            model_path=args.model_path,
-            patch_size=args.patch_size,
-            step_size=args.step_size,
-            ndval=args.ndval,
-            batch_size=args.batch_size,
-            agb=args.agb,
-            max_na_block=args.max_na_block,
-            nodata_thresh=args.nodata_thresh,
-        )
+    def out_raster_path_for(tile_num):
+        # with multiple tiles, each needs its own output file -- suffix tile_num
+        # onto the (single) --out_raster_path the caller gave us
+        if len(args.tile_num) == 1:
+            return args.out_raster_path
+        return args.out_raster_path.replace('.tif', f'_{tile_num}.tif')
+
+    with ThreadPoolExecutor(max_workers=args.n_threads) as executor:
+        futures = {
+            executor.submit(
+                predict_tile,
+                tile_num=tile_num,
+                year=args.year,
+                items=items,
+                model_path=args.model_path,
+                out_raster_path=out_raster_path_for(tile_num),
+                input_dir=args.input_dir,
+                patch_size=args.patch_size,
+                step_size=args.step_size,
+                ndval=args.ndval,
+                batch_size=args.batch_size,
+                agb=args.agb,
+                max_na_block=args.max_na_block,
+                nodata_thresh=args.nodata_thresh,
+            ): tile_num
+            for tile_num in args.tile_num
+        }
+        for future in as_completed(futures):
+            tile_num = futures[future]
+            try:
+                future.result()
+            except Exception:
+                logger.exception('Failed to process tile %s', tile_num)
