@@ -177,16 +177,19 @@ downloads each one locally before processing (`--input_dir`, default
 `download_to_local()` helper.
 
 ```bash
-# wrapper (positional: tile_num year stac_catalog model_path out_raster_path
-# patch_size step_size ndval batch_size)
-./run-predict.sh 3364 2023 s3://bucket/stac_catalog/items.parquet \
-  model.keras pred_agb_3364_2023.tif 128 100 -9999 64
+# wrapper
+./run-predict.sh \
+  --tile_num 3364 \
+  --year 2023 \
+  --stac_catalog s3://bucket/stac_catalog/items.parquet \
+  --model_path model.keras \
+  --out_raster_path pred_agb_3364_2023.tif \
+  --agb
 ```
 
 ### 5. Predict across every available year for a tile
 
-This is the algorithm actually registered on DPS
-(`register_predict_all_years.yml`).
+This is registered on DPS as `register_predict_all_years.yml`.
 
 ```bash
 python predict_all_years.py \
@@ -207,8 +210,12 @@ python predict_all_years.py \
 
 ## DPS deployment
 
-`register_predict_all_years.yml` and `register_coincident_fire_atl08.yml`
-register those two algorithms on MAAP's DPS; both build against
-`predict_env` via `build-env-predict.sh`. `data_prep.py` is no longer run
-through DPS -- it's fast enough to run locally/manually, so there's no
-`register_data-prep.yml`.
+`register_predict.yml`, `register_predict_all_years.yml`, and
+`register_coincident_fire_atl08.yml` register those three algorithms on
+MAAP's DPS; all three build against `predict_env` via `build-env-predict.sh`
+and run through a `run-*-dps.sh` wrapper that takes its arguments
+positionally (`run-predict-dps.sh`, `run-predict-all-years-dps.sh`,
+`run-coincident_fire_atl08.sh`) -- as opposed to the flag-based
+`run-predict.sh` / `run-predict-all-years.sh` wrappers meant for manual runs.
+`data_prep.py` is no longer run through DPS -- it's fast enough to run
+locally/manually, so there's no `register_data-prep.yml`.

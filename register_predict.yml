@@ -1,0 +1,71 @@
+algorithm_description: Predicts Height or AGB for a single HLS composite year given a model and a STAC catalog of HLS, topo, and land cover assets
+algorithm_name: boreal_unet_predict_year
+algorithm_version: v1.0
+build_command: boreal_unet_data_prep/build-env-predict.sh
+disk_space: 80GB
+docker_container_url: mas.maap-project.org/root/maap-workspaces/custom_images/maap_base:v4.3.0
+inputs:
+  config: []
+  file:
+  - default: ''
+    description: model.keras file url
+    name: model_fn_url
+    required: true
+  positional:
+  - default: ''
+    description: tile number
+    name: tile_num
+    required: true
+  - default: ''
+    description: HLS composite year to predict on
+    name: year
+    required: true
+  - default: ''
+    description: path to the STAC items GeoParquet table (built by build_stac_catalog.py)
+    name: stac_catalog
+    required: true
+  - default: ''
+    description: model file
+    name: model_fn
+    required: true
+  - default: ''
+    description: output predicted raster path
+    name: out_raster_path
+    required: true
+  - default: ''
+    description: input directory (DPS default = input)
+    name: input_dir
+    required: false
+  - default: ''
+    description: training image patch size (e.g 128)
+    name: patch_size
+    required: false
+  - default: ''
+    description: sliding window step size (e.g 100)
+    name: step_size
+    required: false
+  - default: ''
+    description: nodata value
+    name: ndval
+    required: false
+  - default: ''
+    description: predicting batches batch size (e.g 64)
+    name: batch_size
+    required: false
+  - default: ''
+    description: max number of NA blocks allowed in a patch
+    name: max_na_block
+    required: false
+  - default: ''
+    description: max nodata fraction allowed in a patch
+    name: nodata_thresh
+    required: false
+  - default: ''
+    description: predict agb if true
+    name: agb
+    required: false
+
+
+queue: maap-dps-worker-8gb
+repository_url: https://github.com/aliz237/boreal_unet_data_prep
+run_command: boreal_unet_data_prep/run-predict-dps.sh
