@@ -1,6 +1,6 @@
 algorithm_description: Predicts Height or AGB for one or more tiles for a single HLS composite year, given a model and a STAC catalog of HLS, topo, and land cover assets
-algorithm_name: boreal_unet_predict_year
-algorithm_version: v1.0
+algorithm_name: boreal_unet_predict_tiles_single_year
+algorithm_version: boreal_unet_predict_tiles_single_year_v1.0
 build_command: boreal_unet_data_prep/build-env-predict.sh
 disk_space: 80GB
 docker_container_url: mas.maap-project.org/root/maap-workspaces/custom_images/maap_base:v4.3.0
