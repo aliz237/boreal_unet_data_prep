@@ -7,6 +7,7 @@ dependencies:
     - gdal=3.12
     - pandas=3
     - geopandas=1
+    - pyarrow=23
     - rasterio=1.5
     - s3fs=2026.4
     - pip:
