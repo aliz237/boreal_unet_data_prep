@@ -14,40 +14,40 @@ def is_lidar_heavy(atl08_arr, min_valid_lidar_per_batch, nodata=-9999):
 
 
 def gapfill(arr, max_na_block=3, nodata_thresh=0.05):
-    patch_size = arr.shape[1]
     # divides patch sizes 128, 64, 32 and is large enough
     # 2 or 4 are too small
     filter_size = 8
-    bands = list(range(arr.shape[0]))  # fill all bands
+    n_bands, patch_size = arr.shape[0], arr.shape[1]
+
+    if not np.isnan(arr).any():
+        return True
+
     # if over 5% of the Blue band is NaN, drop the patch
     ndfrac = np.isnan(arr[0]).sum() / arr[0].size
     if ndfrac > nodata_thresh:
         logger.info('Gapfill: Dropping low quality patch, ndfrac: %s', ndfrac)
         return False
 
-    for band in bands:
-        na_blocks_band = 0
-        patch_median = np.nanmedian(arr[band])
-        # first try block filling
-        for j in range(0, patch_size, filter_size):
-            for i in range(0, patch_size, filter_size):
-                win = arr[band, i : i + filter_size, j : j + filter_size]
-                fill_val = np.nanmedian(win)
-                if not np.isnan(fill_val):
-                    win[np.isnan(win)] = fill_val
-                else:
-                    na_blocks_band += 1
+    patch_medians = np.nanmedian(arr.reshape(n_bands, -1), axis=1)
 
-        # fill the rest with patch-wide median
-        na_mask = np.isnan(arr[band])
-        if np.any(na_mask):
-            arr[band][na_mask] = patch_median
-        # threshold too many NA blocks
-        if na_blocks_band > max_na_block:
-            logger.info(
-                'Gapfill: Dropping low quality patch, na_blocks: %s', na_blocks_band
-            )
-            return False
+    # first try block filling
+    n_blocks = patch_size // filter_size
+    blocks = arr.reshape(n_bands, n_blocks, filter_size, n_blocks, filter_size)
+    block_medians = np.nanmedian(blocks, axis=(2, 4))
+    na_blocks = np.isnan(block_medians).sum(axis=(1, 2))
+    fill = np.repeat(np.repeat(block_medians, filter_size, axis=1), filter_size, axis=2)
+    na_mask = np.isnan(arr)
+    arr[na_mask] = fill[na_mask]
+
+    # fill the rest with patch-wide median
+    na_mask = np.isnan(arr)
+    if na_mask.any():
+        arr[na_mask] = np.broadcast_to(patch_medians[:, None, None], arr.shape)[na_mask]
+
+    # threshold too many NA blocks
+    if (na_blocks > max_na_block).any():
+        logger.info('Gapfill: Dropping low quality patch, na_blocks: %s', na_blocks.max())
+        return False
 
     return True
 

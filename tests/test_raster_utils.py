@@ -54,6 +54,20 @@ class TestGapfill:
         arr[1, :, :] = np.nan
         assert gapfill(arr, max_na_block=3) is False
 
+    def test_all_nan_block_falls_back_to_patch_median(self):
+        arr = np.zeros((1, 16, 16), dtype='float32')
+        arr[0, 8:, 8:] = 4.0
+        arr[0, :8, :8] = np.nan
+        assert gapfill(arr, max_na_block=1, nodata_thresh=0.99) is True
+        np.testing.assert_array_equal(arr[0, :8, :8], np.zeros((8, 8), dtype='float32'))
+
+    def test_bands_are_filled_independently(self):
+        arr = np.stack([np.full((16, 16), 1.0), np.full((16, 16), 7.0)]).astype('float32')
+        arr[:, 0, 0] = np.nan
+        assert gapfill(arr) is True
+        assert arr[0, 0, 0] == 1.0
+        assert arr[1, 0, 0] == 7.0
+
 
 class TestRasterBounds:
     def test_computes_expected_bounds(self):
