@@ -2,14 +2,22 @@ import numpy as np
 
 
 class Consts:
+    # `num` is the 1-based band index in the legacy 7-band HLS composites, used only
+    # as a fallback: raster_utils.resolve_band_indices prefers the band descriptions
+    # carried by newer composites, whose band order differs. `alias` lists the other
+    # spellings a description may use for the same band.
     HLS_BANDS = {
         'blue': {'num': 1, 'norm': None},
         'green': {'num': 2, 'norm': None},
         'red': {'num': 3, 'norm': None},
         'nir': {'num': 4, 'norm': None},
-        'swir1': {'num': 5, 'norm': None},
+        'swir1': {'num': 5, 'norm': None, 'alias': ('swir',)},
         'swir2': {'num': 6, 'norm': None},
-        'nbr': {'num': 7, 'norm': lambda x: (x + 1) / 2},
+        # newer composites don't bound NBR: where NIR + SWIR2 approaches zero (dark
+        # water and shadow, where atmospheric correction yields slightly negative
+        # reflectance) the ratio blows up well past +/-1, so clip before rescaling
+        # to [0, 1].
+        'nbr': {'num': 7, 'norm': lambda x: (np.clip(x, -1, 1) + 1) / 2},
     }
     TOPO_BANDS = {
         'elevation': {'num': 1, 'norm': None},
@@ -18,6 +26,11 @@ class Consts:
         'tpi': {'num': 4, 'norm': None},
         'slopemask': {'num': 5, 'norm': None},
     }
+    # the band subsets fed to the model, shared by data_prep.py and predict.py so
+    # the two can't drift apart. Order here is irrelevant -- normalize_bands emits
+    # bands in HLS_BANDS/TOPO_BANDS declaration order.
+    HLS_INPUT_BANDS = ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'nbr']
+    TOPO_INPUT_BANDS = ['slope', 'tsri']
     # normalization parameters
     MAX_SLOPE = 90.0
     MAX_HEIGHT = 100.0  # in meters

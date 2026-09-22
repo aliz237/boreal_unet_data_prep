@@ -1,12 +1,15 @@
 import numpy as np
+import pytest
 import rasterio
 
+from constants import Consts
 from raster_utils import (
     gapfill,
     is_lidar_heavy,
     normalize_bands,
     open_raster_bounds,
     raster_bounds,
+    resolve_band_indices,
 )
 
 from .helpers import make_mem_dataset, write_gdal_gtiff, write_gtiff
@@ -192,3 +195,67 @@ class TestNormalizeBands:
         assert (out[0:2, :] == 0.5).all()  # inside mask: normalized
         # outside mask: nulled, not left as the un-normalized raw value (50.0)
         assert (out[2:4, :] == -9999.0).all()
+
+
+class TestResolveBandIndices:
+    def test_falls_back_to_num_without_descriptions(self):
+        selected = {'a': {'num': 3, 'norm': None}, 'b': {'num': 1, 'norm': None}}
+        assert resolve_band_indices((None, None, None), selected) == [3, 1]
+
+    def test_prefers_descriptions_over_num(self):
+        selected = {'a': {'num': 1, 'norm': None}, 'b': {'num': 2, 'norm': None}}
+        assert resolve_band_indices(('b', 'c', 'a'), selected) == [3, 1]
+
+    def test_matching_ignores_case_and_punctuation(self):
+        selected = {'swir2': {'num': 6, 'norm': None}}
+        assert resolve_band_indices(('SWIR_2',), selected) == [1]
+
+    def test_uses_alias(self):
+        selected = {'swir1': {'num': 5, 'norm': None, 'alias': ('swir',)}}
+        assert resolve_band_indices(('Blue', 'SWIR'), selected) == [2]
+
+    def test_raises_when_described_raster_lacks_band(self):
+        selected = {'nbr': {'num': 7, 'norm': None}}
+        with pytest.raises(KeyError, match='nbr'):
+            resolve_band_indices(('blue', 'green'), selected)
+
+    def test_resolves_new_hls_band_order(self):
+        # the 21-band composites carry every required band, but NBR sits at 12
+        # rather than 7 and SWIR1 is spelled 'SWIR'.
+        descriptions = (
+            'Blue', 'Green', 'Red', 'NIR', 'SWIR', 'SWIR2', 'NDVI', 'SAVI',
+            'MSAVI', 'NDMI', 'EVI', 'NBR', 'NBR2', 'TCB', 'TCG', 'TCW',
+            'ValidMask', 'Xgeo', 'Ygeo', 'JulianDate', 'yearDate',
+        )
+        selected = {
+            k: v for k, v in Consts.HLS_BANDS.items() if k in Consts.HLS_INPUT_BANDS
+        }
+        assert resolve_band_indices(descriptions, selected) == [1, 2, 3, 4, 5, 6, 12]
+
+
+class TestNormalizeBandsWithDescriptions:
+    def test_reads_by_description_and_writes_in_band_defs_order(self, tmp_path):
+        arr = np.stack(
+            [np.full((3, 3), float(i), dtype='float32') for i in range(1, 4)]
+        )
+        in_path = write_gtiff(
+            tmp_path / 'desc.tif', arr, descriptions=['c', 'a', 'b']
+        )
+        out_path = tmp_path / 'desc_norm.tif'
+        band_defs = {
+            'a': {'num': 1, 'norm': None},
+            'b': {'num': 2, 'norm': None},
+            'c': {'num': 3, 'norm': None},
+        }
+        normalize_bands(str(in_path), str(out_path), band_defs, ['a', 'b', 'c'])
+
+        with rasterio.open(out_path) as src:
+            assert src.descriptions == ('a', 'b', 'c')
+            out = src.read()
+        # output order follows band_defs, values follow the source descriptions
+        assert [out[i, 0, 0] for i in range(3)] == [2.0, 3.0, 1.0]
+
+    def test_nbr_norm_clips_out_of_range_values(self):
+        nbr_norm = Consts.HLS_BANDS['nbr']['norm']
+        arr = np.array([-129.0, -1.0, 0.0, 1.0, 14.0], dtype='float32')
+        np.testing.assert_allclose(nbr_norm(arr), [0.0, 0.0, 0.5, 1.0, 1.0])

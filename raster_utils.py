@@ -52,6 +52,44 @@ def gapfill(arr, max_na_block=3, nodata_thresh=0.05):
     return True
 
 
+def _canonical_band_name(name):
+    return ''.join(ch for ch in name.lower() if ch.isalnum())
+
+
+def resolve_band_indices(descriptions, selected):
+    """Maps each band in `selected` to its 1-based index in a raster.
+
+    Prefers the raster's own band descriptions, so a source whose bands are in a
+    different order than `band_defs` declares still reads correctly. Matching
+    ignores case and punctuation ('SWIR_2' == 'swir2') and consults each band def's
+    optional 'alias' tuple. Falls back to the declared 'num' only for rasters that
+    carry no descriptions at all -- a partially described raster that is missing a
+    requested band raises instead, since silently indexing by position is exactly
+    the error this guards against.
+    """
+    by_name = {}
+    for index, desc in enumerate(descriptions, start=1):
+        if desc:
+            by_name.setdefault(_canonical_band_name(desc), index)
+    if not by_name:
+        return [v['num'] for v in selected.values()]
+
+    indices = []
+    for name, meta in selected.items():
+        candidates = (name,) + tuple(meta.get('alias', ()))
+        match = next(
+            (by_name[c] for c in map(_canonical_band_name, candidates) if c in by_name),
+            None,
+        )
+        if match is None:
+            raise KeyError(
+                f'band {name!r} not found among raster band descriptions '
+                f'{sorted(by_name)}; add a spelling to its "alias" in Consts'
+            )
+        indices.append(match)
+    return indices
+
+
 def normalize_bands(
     in_raster_path, out_raster_path, band_defs, band_names, mask_path=None
 ):
@@ -59,7 +97,7 @@ def normalize_bands(
     if mask_path:
         mask = rasterio.open(mask_path).read(1).astype('int32')
     with rasterio.open(in_raster_path) as src:
-        arr = src.read([v['num'] for v in selected.values()]).astype('float32')
+        arr = src.read(resolve_band_indices(src.descriptions, selected)).astype('float32')
         profile = src.profile
     for i, (name, meta) in enumerate(selected.items()):
         validmask = arr[i] != -9999
@@ -77,6 +115,7 @@ def normalize_bands(
     profile.update({'dtype': 'float32', 'count': len(selected), 'nodata': -9999})
     with rasterio.open(out_raster_path, 'w', **profile) as dst:
         dst.write(arr)
+        dst.descriptions = tuple(selected)
     return out_raster_path
 
 

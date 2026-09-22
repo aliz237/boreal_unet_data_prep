@@ -45,7 +45,7 @@ def create_training_dataset(
             topo_path,
             str(Path('/tmp') / (Path(topo_path).stem + '_norm.tif')),
             Consts.TOPO_BANDS,
-            ['slope', 'tsri'],
+            Consts.TOPO_INPUT_BANDS,
         )
         for year in sorted(atl08_paths.keys()):
             atl08_raster_paths[year] = str(
@@ -82,7 +82,7 @@ def create_training_dataset(
                 hls_paths[year],
                 str(Path('/tmp') / (Path(hls_paths[year]).stem + '_norm.tif')),
                 Consts.HLS_BANDS,
-                ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'nbr'],
+                Consts.HLS_INPUT_BANDS,
                 mask_path=mask_path,
             )
 

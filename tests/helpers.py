@@ -5,7 +5,7 @@ from osgeo import gdal
 from rasterio.transform import from_origin
 
 
-def write_gtiff(path, arr, nodata=-9999, dtype='float32'):
+def write_gtiff(path, arr, nodata=-9999, dtype='float32', descriptions=None):
     """Writes a (count, height, width) array to a GeoTIFF at path. Returns path."""
     count, h, w = arr.shape
     profile = {
@@ -20,6 +20,8 @@ def write_gtiff(path, arr, nodata=-9999, dtype='float32'):
     }
     with rasterio.open(path, 'w', **profile) as dst:
         dst.write(arr.astype(dtype))
+        if descriptions:
+            dst.descriptions = tuple(descriptions)
     return path
 
 

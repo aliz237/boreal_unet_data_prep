@@ -88,13 +88,13 @@ def predict_raster(
         hls_path,
         hls_path.replace('.tif', '_norm.tif'),
         Consts.HLS_BANDS,
-        ['blue', 'green', 'red', 'nir', 'swir1', 'swir2', 'nbr'],
+        Consts.HLS_INPUT_BANDS,
     )
     topo_path = normalize_bands(
         topo_path,
         topo_path.replace('.tif', '_norm.tif'),
         Consts.TOPO_BANDS,
-        ['slope', 'tsri'],
+        Consts.TOPO_INPUT_BANDS,
     )
 
     hls_path, topo_path, lc_path = align_if_needed(hls_path, topo_path, lc_path)
