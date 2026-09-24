@@ -85,32 +85,47 @@ def _window_mean_slope(topo_ds, win, ndval):
     return float(np.nanmean(s)) * Consts.MAX_SLOPE if s.size else np.nan
 
 
-def _write_drop_log(rows, drop_log_path):
-    """Write the per-window drop log and log a by-reason summary.
+def _drop_log_summary(df):
+    """By-reason summary of a per-window drop log.
 
-    agb_label_weighted is the label-count-weighted mean AGB per reason.
+    agb_label_weighted is the mean AGB weighted by label count, not window count.
+    p_fail_* is the share of each reason's windows that also fail each gate.
     """
-    import pandas as pd
-
-    df = pd.DataFrame(rows)
-    if df.empty:
-        logger.info('drop log empty, nothing written')
-        return
-    drop_log_path = Path(drop_log_path)
-    drop_log_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(drop_log_path, index=False)
-
     g = df.groupby('reason').agg(
         n_windows=('reason', 'size'),
         n_labels=('n_agb', 'sum'),
         mean_slope=('mean_slope', 'mean'),
         mean_nd_frac=('nd_frac', 'mean'),
+        p_fail_lidar=('fail_lidar', 'mean'),
+        p_fail_hls=('fail_hls', 'mean'),
+        p_fail_topo=('fail_topo', 'mean'),
     )
     w = df[df['n_agb'] > 0].copy()
     w['_s'] = w['mean_agb'] * w['n_agb']
     by_reason = w.groupby('reason')
     g['agb_label_weighted'] = by_reason['_s'].sum() / by_reason['n_agb'].sum()
-    logger.info('wrote %s\n%s', drop_log_path, g.to_string())
+    return g.reset_index()
+
+
+def _write_drop_log(rows, drop_log_path, write_windows=True):
+    """Write the by-reason summary, and optionally the per-window rows."""
+    import pandas as pd
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        logger.info('drop log empty, nothing written')
+        return None
+    drop_log_path = Path(drop_log_path)
+    drop_log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    summary = _drop_log_summary(df)
+    summary_path = drop_log_path.with_name(drop_log_path.stem + '_summary.csv')
+    summary.to_csv(summary_path, index=False)
+    if write_windows:
+        df.to_csv(drop_log_path, index=False)
+
+    logger.info('wrote %s\n%s', summary_path, summary.to_string(index=False))
+    return summary
 
 
 def _init_extraction(hls_paths, tfrecord_path, patch_size, overlap, ndval_thresh):
@@ -280,49 +295,50 @@ def extract_patches_tfrec_per_year(
                     win = Window(j, i, patch_size, patch_size)
 
                     a_arr = _read_atl08_patch(a, win)
-
-                    row = None
-                    if drop_log is not None:
-                        # read slope before the lidar gate so its drops carry it too
-                        row = {
-                            'tile': tile,
-                            'year': year,
-                            'j': j,
-                            'i': i,
-                            'nd_frac': np.nan,
-                            'mean_slope': _window_mean_slope(tp, win, ndval),
-                        }
-                        row.update(_window_label_stats(a_arr, ndval))
-
                     # look for an ~diagonal lidar track across the patch
-                    if not is_lidar_heavy(a_arr[0], min_n):
+                    lidar_ok = is_lidar_heavy(a_arr[0], min_n)
+
+                    # with the drop log on, every gate runs on every window
+                    logging_all = drop_log is not None
+                    if not lidar_ok and not logging_all:
                         logger.debug('sparse lidar covergae, dropping patch')
-                        if row is not None:
-                            row['reason'] = 'lidar_sparse'
-                            drop_log.append(row)
                         continue
 
-                    h_arr, reason, nd_frac = _read_valid_hls_patch(h, win, ndval, max_na)
-                    if row is not None:
-                        row['nd_frac'] = nd_frac
-                    if h_arr is None:
-                        if row is not None:
-                            row['reason'] = reason
-                            drop_log.append(row)
+                    h_arr, hls_reason, nd_frac = _read_valid_hls_patch(
+                        h, win, ndval, max_na
+                    )
+                    if h_arr is None and not logging_all:
                         continue
 
-                    tp_arr, reason = _read_valid_topo_patch(
+                    tp_arr, topo_reason = _read_valid_topo_patch(
                         tp, win, ndval, ndval_thresh, patch_size
                     )
-                    if tp_arr is None:
-                        if row is not None:
-                            row['reason'] = reason
-                            drop_log.append(row)
+                    if tp_arr is None and not logging_all:
                         continue
 
-                    if row is not None:
-                        row['reason'] = 'kept'
-                        drop_log.append(row)
+                    if logging_all:
+                        reason = (
+                            'lidar_sparse'
+                            if not lidar_ok
+                            else hls_reason or topo_reason or 'kept'
+                        )
+                        drop_log.append(
+                            {
+                                'tile': tile,
+                                'year': year,
+                                'j': j,
+                                'i': i,
+                                'reason': reason,
+                                'fail_lidar': not lidar_ok,
+                                'fail_hls': hls_reason is not None,
+                                'fail_topo': topo_reason is not None,
+                                'nd_frac': nd_frac,
+                                'mean_slope': _window_mean_slope(tp, win, ndval),
+                                **_window_label_stats(a_arr, ndval),
+                            }
+                        )
+                        if reason != 'kept':
+                            continue
 
                     # save patches on disk
                     n += 1
