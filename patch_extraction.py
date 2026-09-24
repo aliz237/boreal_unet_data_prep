@@ -136,6 +136,82 @@ def _drop_log_summary(df, min_n):
     )
 
 
+_WINDOW_WEIGHTED = [
+    'mean_slope',
+    'mean_nd_frac',
+    'p_fail_lidar',
+    'p_fail_hls',
+    'p_fail_topo',
+]
+
+
+def combine_drop_summaries(summary_paths):
+    """Pool per-tile drop-log summaries, re-weighting by window or label count."""
+    import pandas as pd
+
+    df = pd.concat(
+        [
+            pd.read_csv(f).assign(tile=Path(f).name.split('_')[0])
+            for f in summary_paths
+        ],
+        ignore_index=True,
+    )
+    for c in _WINDOW_WEIGHTED:
+        df[f'_{c}'] = df[c] * df['n_windows']
+    df['_agb'] = df['agb_label_weighted'] * df['n_labels']
+
+    g = df.groupby('group').agg(
+        n_tiles=('tile', 'nunique'),
+        n_windows=('n_windows', 'sum'),
+        n_labels=('n_labels', 'sum'),
+        _agb=('_agb', 'sum'),
+        **{f'_{c}': (f'_{c}', 'sum') for c in _WINDOW_WEIGHTED},
+    )
+    for c in _WINDOW_WEIGHTED:
+        g[c] = g[f'_{c}'] / g['n_windows']
+    g['agb_label_weighted'] = g['_agb'] / g['n_labels'].replace(0, np.nan)
+    g['pct_labels'] = g['n_labels'] / g['n_labels'].sum()
+
+    g = g[
+        ['n_tiles', 'n_windows', 'n_labels', 'pct_labels']
+        + _WINDOW_WEIGHTED
+        + ['agb_label_weighted']
+    ].reset_index()
+    g['_k'] = (g['group'] != 'kept').astype(int)
+    return (
+        g.sort_values(['_k', 'n_labels'], ascending=[True, False])
+        .drop(columns='_k')
+        .reset_index(drop=True)
+    )
+
+
+def gate_footprint(window_log_paths):
+    """Labels and mean AGB rejected by each gate independently, pooled over tiles.
+
+    Summary groups only blame the first failing gate, which hides later gates.
+    """
+    import pandas as pd
+
+    df = pd.concat([pd.read_csv(f) for f in window_log_paths], ignore_index=True)
+    df = df[df['n_agb'] > 0]
+    out = []
+    for gate in ('fail_lidar', 'fail_hls', 'fail_topo'):
+        for failed in (False, True):
+            sub = df[df[gate] == failed]
+            n = sub['n_agb'].sum()
+            out.append({
+                'gate': gate,
+                'rejected': failed,
+                'n_windows': len(sub),
+                'n_labels': int(n),
+                'pct_labels': n / df['n_agb'].sum() if len(df) else np.nan,
+                'agb_label_weighted': (
+                    (sub['mean_agb'] * sub['n_agb']).sum() / n if n else np.nan
+                ),
+            })
+    return pd.DataFrame(out)
+
+
 def _write_drop_log(rows, drop_log_path, min_n, write_windows=True):
     """Write the by-reason summary, and optionally the per-window rows."""
     import pandas as pd
