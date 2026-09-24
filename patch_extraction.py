@@ -85,14 +85,32 @@ def _window_mean_slope(topo_ds, win, ndval):
     return float(np.nanmean(s)) * Consts.MAX_SLOPE if s.size else np.nan
 
 
-def _drop_log_summary(df):
-    """By-reason summary of a per-window drop log.
+def _label_count_group(reason, n_agb, min_n):
+    """Bucket lidar_sparse drops by label count; other reasons pass through."""
+    if reason != 'lidar_sparse':
+        return reason
+    if n_agb == 0:
+        return 'lidar_sparse:0'
+    lo = max(1, min_n // 3)
+    return (
+        f'lidar_sparse:1-{lo - 1}' if n_agb < lo
+        else f'lidar_sparse:{lo}-{min_n}'
+    )
+
+
+def _drop_log_summary(df, min_n):
+    """Summary of a per-window drop log, grouped by gate and label count.
 
     agb_label_weighted is the mean AGB weighted by label count, not window count.
-    p_fail_* is the share of each reason's windows that also fail each gate.
+    p_fail_* is the share of each group's windows that also fail each gate.
+    pct_labels is the group's share of all ATL08 labels in the tile.
     """
-    g = df.groupby('reason').agg(
-        n_windows=('reason', 'size'),
+    df = df.copy()
+    df['group'] = [
+        _label_count_group(r, n, min_n) for r, n in zip(df['reason'], df['n_agb'])
+    ]
+    g = df.groupby('group').agg(
+        n_windows=('group', 'size'),
         n_labels=('n_agb', 'sum'),
         mean_slope=('mean_slope', 'mean'),
         mean_nd_frac=('nd_frac', 'mean'),
@@ -100,14 +118,25 @@ def _drop_log_summary(df):
         p_fail_hls=('fail_hls', 'mean'),
         p_fail_topo=('fail_topo', 'mean'),
     )
+    total = g['n_labels'].sum()
+    g['pct_labels'] = g['n_labels'] / total if total else np.nan
+
     w = df[df['n_agb'] > 0].copy()
     w['_s'] = w['mean_agb'] * w['n_agb']
-    by_reason = w.groupby('reason')
-    g['agb_label_weighted'] = by_reason['_s'].sum() / by_reason['n_agb'].sum()
-    return g.reset_index()
+    by_group = w.groupby('group')
+    g['agb_label_weighted'] = by_group['_s'].sum() / by_group['n_agb'].sum()
+
+    g = g.reset_index()
+    # kept first, then whatever holds the most labels
+    g['_k'] = (g['group'] != 'kept').astype(int)
+    return (
+        g.sort_values(['_k', 'n_labels'], ascending=[True, False])
+        .drop(columns='_k')
+        .reset_index(drop=True)
+    )
 
 
-def _write_drop_log(rows, drop_log_path, write_windows=True):
+def _write_drop_log(rows, drop_log_path, min_n, write_windows=True):
     """Write the by-reason summary, and optionally the per-window rows."""
     import pandas as pd
 
@@ -118,7 +147,7 @@ def _write_drop_log(rows, drop_log_path, write_windows=True):
     drop_log_path = Path(drop_log_path)
     drop_log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    summary = _drop_log_summary(df)
+    summary = _drop_log_summary(df, min_n)
     summary_path = drop_log_path.with_name(drop_log_path.stem + '_summary.csv')
     summary.to_csv(summary_path, index=False)
     if write_windows:
@@ -358,5 +387,5 @@ def extract_patches_tfrec_per_year(
             logger.info('wrote %s records', n)
     tfw.close()
     if drop_log is not None:
-        _write_drop_log(drop_log, drop_log_path)
+        _write_drop_log(drop_log, drop_log_path, min_n)
     _finalize_tfrecord(tfrecord_path, n, all_dims, hls_paths[years[-1]])
