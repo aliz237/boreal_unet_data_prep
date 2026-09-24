@@ -25,6 +25,7 @@ def create_training_dataset(
     out_dir='output',
     ndval_thresh=0.30,
     pairwise=True,
+    drop_log_dir='',
 ):
     items = load_items(stac_catalog)
     atl08_paths = get_year_paths(items, Consts.ATL08_COLLECTION, tile_num)
@@ -89,6 +90,10 @@ def create_training_dataset(
         logger.info('Extracting patches for tile: %s', tile_num)
         extract_fn = extract_patches_tfrec if pairwise else extract_patches_tfrec_per_year
         mode_suffix = 'pairwise' if pairwise else 'peryear'
+        # drop log is per-year only
+        extra = {}
+        if drop_log_dir and not pairwise:
+            extra['drop_log_path'] = str(Path(drop_log_dir) / f'{tile_num}_drop_log.csv')
         extract_fn(
             hls_norm_paths,
             atl08_raster_paths,
@@ -100,6 +105,7 @@ def create_training_dataset(
             overlap=overlap,
             ndval_thresh=ndval_thresh,
             fire_years=fire_years,
+            **extra,
         )
     finally:
         logger.info('cleaning up temp rasters ...')
@@ -151,6 +157,14 @@ if __name__ == '__main__':
         help='Drop the training patch if HLS nodata %% > ndval_thresh',
         type=float,
         default=0.30,
+    )
+    parse.add_argument(
+        '--drop_log_dir',
+        help=(
+            'If set, write a per-window CSV of drop reasons and ATL08 label '
+            'stats to this directory (per-year only; diagnostic, slower).'
+        ),
+        default='',
     )
     parse.add_argument(
         '--pairwise',
