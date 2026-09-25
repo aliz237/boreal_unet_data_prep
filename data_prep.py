@@ -26,6 +26,7 @@ def create_training_dataset(
     ndval_thresh=0.30,
     pairwise=True,
     drop_log_dir='',
+    min_lidar=120,
 ):
     items = load_items(stac_catalog)
     atl08_paths = get_year_paths(items, Consts.ATL08_COLLECTION, tile_num)
@@ -105,6 +106,7 @@ def create_training_dataset(
             overlap=overlap,
             ndval_thresh=ndval_thresh,
             fire_years=fire_years,
+            min_lidar=min_lidar,
             **extra,
         )
     finally:
@@ -157,6 +159,15 @@ if __name__ == '__main__':
         help='Drop the training patch if HLS nodata %% > ndval_thresh',
         type=float,
         default=0.30,
+    )
+    parse.add_argument(
+        '--min_lidar',
+        help=(
+            'Minimum valid ATL08 pixels a patch needs; lowered to 70%% of the '
+            'patch diagonal when that is smaller'
+        ),
+        type=int,
+        default=120,
     )
     parse.add_argument(
         '--drop_log_dir',

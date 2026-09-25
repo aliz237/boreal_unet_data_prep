@@ -14,6 +14,7 @@ while [[ $# -gt 0 ]]; do
     --fire_path)    FIRE_PATH="$2"; shift 2 ;;
     --out_dir)      OUT_DIR="$2"; shift 2 ;;
     --ndval_thresh) NDVAL_THRESH="$2"; shift 2 ;;
+    --min_lidar)    MIN_LIDAR="$2"; shift 2 ;; # Default of 120
     --agb)          AGB=true; shift 1 ;;
     *) echo "Unknown argument: $1"; exit 1 ;;
   esac
@@ -50,6 +51,10 @@ fi
 
 if [[ -n "${NDVAL_THRESH:-}" ]]; then
     CMD+=(--ndval_thresh "$NDVAL_THRESH")
+fi
+
+if [[ -n "${MIN_LIDAR:-}" ]]; then
+    CMD+=(--min_lidar "$MIN_LIDAR")
 fi
 
 if [[ "${AGB}" == true ]]; then

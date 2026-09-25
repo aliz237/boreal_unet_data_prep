@@ -147,8 +147,9 @@ python data_prep.py \
   --out_dir output/
 ```
 
-`--rh` (default `h_canopy`), `--patch_size` (128), `--overlap` (32), and
-`--ndval_thresh` (0.30) are also overridable.
+`--rh` (default `h_canopy`), `--patch_size` (128), `--overlap` (32),
+`--ndval_thresh` (0.30), and `--min_lidar` (120, the minimum valid ATL08
+pixels per patch) are also overridable.
 
 ```bash
 # wrapper

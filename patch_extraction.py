@@ -233,14 +233,17 @@ def _write_drop_log(rows, drop_log_path, min_n, write_windows=True):
     return summary
 
 
-def _init_extraction(hls_paths, tfrecord_path, patch_size, overlap, ndval_thresh):
+def _init_extraction(
+    hls_paths, tfrecord_path, patch_size, overlap, ndval_thresh, min_lidar
+):
     """Shared setup for both extraction loops: sorted years, sliding-window step
     size, lidar/nodata thresholds, and the open TFRecordWriter."""
     years = sorted(hls_paths.keys())
     step_size = patch_size - overlap
-    # 120 is median valid pixel count of lidar track in ATL08 128x128 patches
+    # min_lidar defaults to 120, the median valid pixel count of lidar track in
+    # ATL08 128x128 patches
     # the other one is 70% of diagonal of a patch (so close to complete and decent lidar track)
-    min_n = int(min(patch_size * np.sqrt(2) * 0.7, 120))
+    min_n = int(min(patch_size * np.sqrt(2) * 0.7, min_lidar))
     max_na = ndval_thresh * patch_size**2
     tfw = tf.io.TFRecordWriter(
         str(tfrecord_path), options=tf.io.TFRecordOptions(compression_type='GZIP')
@@ -276,9 +279,10 @@ def extract_patches_tfrec(
     overlap=32,
     ndval_thresh=0.30,
     fire_years=None,  # set of years with a fire mask baked into hls_paths, or None
+    min_lidar=120,  # min valid ATL08 pixels per patch, capped by the patch diagonal
 ):
     years, step_size, min_n, max_na, tfw = _init_extraction(
-        hls_paths, tfrecord_path, patch_size, overlap, ndval_thresh
+        hls_paths, tfrecord_path, patch_size, overlap, ndval_thresh, min_lidar
     )
     n = 0
     all_dims = set()
@@ -368,6 +372,7 @@ def extract_patches_tfrec_per_year(
     overlap=32,
     ndval_thresh=0.30,
     fire_years=None,  # set of years with a fire mask baked into hls_paths, or None
+    min_lidar=120,  # min valid ATL08 pixels per patch, capped by the patch diagonal
     drop_log_path=None,  # csv of per-window drop reasons + label stats; None disables
 ):
     """Like extract_patches_tfrec, but writes one (H, W, D) record per year
@@ -377,7 +382,7 @@ def extract_patches_tfrec_per_year(
     whether a filter biases the training labels. Diagnostic only (slower).
     """
     years, step_size, min_n, max_na, tfw = _init_extraction(
-        hls_paths, tfrecord_path, patch_size, overlap, ndval_thresh
+        hls_paths, tfrecord_path, patch_size, overlap, ndval_thresh, min_lidar
     )
     n = 0
     all_dims = set()
