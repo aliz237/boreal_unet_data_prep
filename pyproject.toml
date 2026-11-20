@@ -44,7 +44,7 @@ train = [
 # `train`, even though DPS's current predict workers are CPU-only -- tensorflow[and-cuda]
 # falls back to CPU cleanly when no GPU is present, and keeping the two envs consistent
 # means this is ready for a GPU worker without an environment change.
-predict = ["tensorflow[and-cuda]==2.18.0"]
+predict = ["tensorflow[and-cuda]==2.18.0", "pystac>=1.10,<2", "rio-stac>=0.10,<0.13", "jsonschema>=4"]
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [tool.setuptools]
@@ -59,6 +59,7 @@ py-modules = [
     "atl08_utils",
     "patch_extraction",
     "stac_search",
+    "stac_output",
     "build_stac_catalog",
     "data_prep",
     "predict",

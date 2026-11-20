@@ -54,10 +54,10 @@ without an environment change:
 | `data_prep2` | `environment.yml` | `data_prep.py`, `build_stac_catalog.py` |
 | `predict_env` | `environment-predict.yml` | `predict.py`, `predict_all_years.py`, `coincident_fire_atl08.py` |
 
-`build_stac_catalog.py`'s extra dependencies (`pystac`, `stac-geoparquet`,
-`antimeridian`) only live in `environment.yml`/`data_prep2` -- it's not
-needed in `predict_env` since `stac_search.py` (what `predict.py`/
-`predict_all_years.py` actually import) only needs `geopandas`.
+Catalog-building dependencies `stac-geoparquet` and `antimeridian` live in
+`environment.yml`/`data_prep2`. Runtime catalog queries use `geopandas`.
+Single-tile prediction output metadata additionally uses `pystac`, `rio-stac`,
+and `jsonschema`, included in both environments.
 
 ```bash
 conda env create -f environment.yml          # creates data_prep2
@@ -227,3 +227,48 @@ positionally (`run-predict-dps.sh`, `run-predict-all-years-dps.sh`,
 `run-predict.sh` / `run-predict-all-years.sh` wrappers meant for manual runs.
 `data_prep.py` is no longer run through DPS -- it's fast enough to run
 locally/manually, so there's no `register_data-prep.yml`.
+
+### STAC metadata for single-tile predictions
+
+When `predict.py` is given exactly one `--tile_num`, it writes the prediction
+COG, a same-stem STAC Item JSON, and `catalog.json` beside the COG. For DPS,
+use an output path such as `output/pred_agb_2023.tif` so all three files are
+uploaded together. Use a fresh output directory for each run; an existing
+item or catalog is not overwritten. Multiple-tile runs and
+`predict_all_years.py` do not generate output STAC metadata.
+
+`stac_output.py` follows the [MAAP DPS STAC tutorial](https://docs.maap-project.org/en/latest/technical_tutorials/dps_tutorial/dps_stac_metadata.html)
+and the [S1 composite example](https://github.com/aliz237/s1-composite/blob/v0.1.1-rc.1/stac_output.py).
+It writes a self-contained catalog with relative links, projection metadata,
+and a single `agb` (Mg/ha) or `height` (m) raster asset with its actual data type
+and nodata value. The time range represents the requested calendar year, not
+execution time or exact HLS acquisition dates. Properties record the tile,
+year, original input asset hrefs, model path as supplied, model SHA-256, and
+inference settings. The item ID hashes these inputs except the model path,
+so different model contents or settings produce
+different IDs; identical runs intentionally reuse the same ID.
+
+If `config.json` exists beside the selected `.keras` file, it is copied verbatim
+to `<prediction-stem>.model-config.json` and linked as the STAC `model_config`
+metadata asset. Use `--model_config /path/to/training-config.json` to select a
+different local file. The config SHA-256 and its `run_id` (when present) are
+stored on the Item; the config checksum also participates in the item ID.
+This preserves training details such as target, units, predictor order,
+normalization, architecture, training settings, and code/data manifest hashes.
+The config documents the model; it does not override inference settings.
+
+For DPS, stage the matching config through the optional `model_config_url`
+file input and pass its staged path in `model_config` (positional argument 15).
+Always pair it with the selected model's training run. The repository's sample
+`config.json` is not a global default for other models. Without a matching
+sidecar or explicit config, metadata still records the model path and checksum.
+An explicitly supplied missing or invalid JSON config fails the job.
+
+DPS assigns the published collection, S3 locations, and job provenance during
+ingestion. No collection license or DPS provenance is fabricated locally.
+PySTAC validates the catalog before saving; extension validation requires
+access to the schema URLs. Prediction and metadata errors fail single-tile
+jobs. Install the updated conda environment (or `pip install -e '.[predict]'`)
+before running this workflow. Existing DPS tags still identify their original
+code; deploying this addition requires a new single-year version and matching
+Git tag, followed by DPS registration.

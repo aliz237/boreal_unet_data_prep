@@ -1,6 +1,6 @@
 algorithm_description: Predicts Height or AGB for one or more tiles for a single HLS composite year, given a model and a STAC catalog of HLS, topo, and land cover assets
 algorithm_name: boreal_unet_predict_tiles_single_year
-algorithm_version: boreal_unet_predict_tiles_single_year_v1.3
+algorithm_version: boreal_unet_predict_tiles_single_year_v1.4
 build_command: boreal_unet_data_prep/build-env-predict.sh
 disk_space: 80GB
 docker_container_url: mas.maap-project.org/root/maap-workspaces/custom_images/maap_base:v4.3.0
@@ -11,6 +11,10 @@ inputs:
     description: model.keras file url
     name: model_fn_url
     required: true
+  - default: ''
+    description: training config JSON URL for the selected model
+    name: model_config_url
+    required: false
   positional:
   - default: ''
     description: comma-separated tile number(s) to predict on, e.g. "3364,3365"
@@ -68,6 +72,10 @@ inputs:
   - default: ''
     description: number of tiles to predict on in parallel (default 4)
     name: n_threads
+    required: false
+  - default: ''
+    description: local staged training config JSON path (defaults to config.json beside model)
+    name: model_config
     required: false
 
 

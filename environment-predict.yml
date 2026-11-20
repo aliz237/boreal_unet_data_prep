@@ -12,3 +12,6 @@ dependencies:
     - s3fs=2026.4
     - pip:
         - tensorflow[and-cuda]==2.18.0
+        - pystac>=1.10,<2
+        - rio-stac>=0.10,<0.13
+        - jsonschema>=4

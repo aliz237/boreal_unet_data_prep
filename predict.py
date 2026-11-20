@@ -217,6 +217,8 @@ def predict_tile(
     agb=False,
     max_na_block=1000,
     nodata_thresh=0.99,
+    write_stac_metadata=False,
+    model_config_path=None,
 ):
     """Resolves one tile's STAC-listed assets, downloads them locally, and runs
     predict_raster() on them.
@@ -224,6 +226,7 @@ def predict_tile(
     hls_path = get_year_paths(items, Consts.HLS_COLLECTION, tile_num)[year]
     topo_path = get_single_path(items, Consts.TOPO_COLLECTION, tile_num)
     lc_path = get_single_path(items, Consts.LC_COLLECTION, tile_num)
+    sources = {'hls': hls_path, 'topo': topo_path, 'landcover': lc_path}
 
     with (
         downloaded_locally(hls_path, input_dir) as hls_path,
@@ -244,6 +247,28 @@ def predict_tile(
             max_na_block=max_na_block,
             nodata_thresh=nodata_thresh,
         )
+
+    if write_stac_metadata:
+        from stac_output import write_stac
+
+        metadata = write_stac(
+            out_raster_path,
+            tile_num=tile_num,
+            year=year,
+            model_path=model_path,
+            model_config_path=model_config_path,
+            agb=agb,
+            sources=sources,
+            parameters={
+                'patch_size': patch_size,
+                'step_size': step_size,
+                'ndval': ndval,
+                'batch_size': batch_size,
+                'max_na_block': max_na_block,
+                'nodata_thresh': nodata_thresh,
+            },
+        )
+        logger.info('Wrote STAC metadata: %s', metadata)
 
 
 if __name__ == '__main__':
@@ -277,6 +302,11 @@ if __name__ == '__main__':
         default='input',
     )
     parse.add_argument('--model_path', help='path to UNet model', required=True)
+    parse.add_argument(
+        '--model_config',
+        help='model training JSON for STAC metadata; defaults to config.json beside model',
+        default=None,
+    )
     parse.add_argument(
         '--patch_size',
         help='patch size, should be the same as what was used when training the model',
@@ -349,6 +379,8 @@ if __name__ == '__main__':
                 agb=args.agb,
                 max_na_block=args.max_na_block,
                 nodata_thresh=args.nodata_thresh,
+                write_stac_metadata=len(args.tile_num) == 1,
+                model_config_path=args.model_config,
             ): tile_num
             for tile_num in args.tile_num
         }
@@ -358,3 +390,5 @@ if __name__ == '__main__':
                 future.result()
             except Exception:
                 logger.exception('Failed to process tile %s', tile_num)
+                if len(args.tile_num) == 1:
+                    raise

@@ -24,6 +24,7 @@ CMD=(conda run --live-stream --name predict_env python "${basedir}/predict.py"
 [[ -n "${12:-}" ]] && CMD+=(--nodata_thresh "${12}")
 [[ -n "${13:-}" ]] && CMD+=(--agb)
 [[ -n "${14:-}" ]] && CMD+=(--n_threads "${14}")
+[[ -n "${15:-}" ]] && CMD+=(--model_config "${15}")
 
 echo "${CMD[@]}"
 "${CMD[@]}"

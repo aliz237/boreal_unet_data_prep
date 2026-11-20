@@ -19,5 +19,7 @@ dependencies:
     - pip:
         - tensorflow[and-cuda]==2.18.0
         - pystac
+        - rio-stac>=0.10,<0.13
+        - jsonschema>=4
         - stac-geoparquet
         - antimeridian

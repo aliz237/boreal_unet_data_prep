@@ -10,6 +10,7 @@ while [[ $# -gt 0 ]]; do
     --year)              YEAR="$2"; shift 2 ;;
     --stac_catalog)      STAC_CATALOG="$2"; shift 2 ;;
     --model_path)        MODEL_PATH="$2"; shift 2 ;;
+    --model_config)      MODEL_CONFIG="$2"; shift 2 ;;
     --out_raster_path)   OUT_RASTER_PATH="$2"; shift 2 ;;
     --input_dir)         INPUT_DIR="$2"; shift 2 ;;
     --patch_size)        PATCH_SIZE="$2"; shift 2 ;; # Defaults at 128
@@ -74,6 +75,8 @@ fi
 if [[ -n "${N_THREADS:-}" ]]; then
     CMD+=(--n_threads "$N_THREADS")
 fi
+
+[[ -n "${MODEL_CONFIG:-}" ]] && CMD+=(--model_config "$MODEL_CONFIG")
 
 echo "${CMD[@]}"
 "${CMD[@]}"
